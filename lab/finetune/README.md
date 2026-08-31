@@ -15,14 +15,14 @@ o timbre. Por isso uma hora de áudio basta onde uma voz do zero pediria dezenas
 py -m lab.devices                     # confirme o microfone antes
 py -m lab.finetune.record
 py -m lab.finetune.record --status    # quanto já tem
+py -m lab.finetune.check              # procura takes ruins antes de treinar
 py -m lab.finetune.record --review 12 # ouvir e refazer a frase 12
 py -m lab.finetune.record --redo 1-10  # apagar as 10 primeiras e regravar
 py -m lab.finetune.record --reset     # apagar tudo e comecar de novo
 ```
 
-São 95 frases: 45 do domínio do assistente ("Timer de dez minutos", "Acendi a luz
-do quarto") e 50 escolhidas para varrer sons que as primeiras não cobrem —
-nasais, encontros consonantais, perguntas, estrangeirismos.
+São 203 frases (ver "Quanto é suficiente" abaixo). O gravador retoma sempre de
+onde parou, então dá para fazer em várias sessões.
 
 Para sozinha quando você para de falar. Pode parar com `q` e continuar depois:
 retoma de onde ficou. Recusa automaticamente takes baixos demais ou saturados.
@@ -41,10 +41,19 @@ carrega para dentro do modelo qualquer artefato que tiver.
 
 ### Quanto é suficiente
 
-As 95 frases dão uns 9 minutos. Isso já produz um timbre reconhecível partindo
-de um checkpoint bom, mas **15 a 30 minutos** é onde fica convincente. Rodar o
-corpus duas vezes, em dias diferentes, também ajuda: dá variação de entonação em
-vez de mais do mesmo.
+O corpus tem 203 frases em dois blocos:
+
+| Bloco | Frases | Áudio | O que é |
+|---|---|---|---|
+| 1 (1–95) | 95 | ~5 min | domínio do assistente + varredura fonética, frases curtas |
+| 2 (96–203) | 108 | ~12 min | frases longas, com vírgula, subordinada e respiração no meio |
+
+O bloco 1 rendeu menos áudio do que parecia: 95 arquivos, mas só 5 minutos. O
+que falta num fine-tune não é quantidade de arquivos, é **minutos**. Por isso o
+bloco 2 é de frases longas — rende o dobro de áudio com a mesma paciência, e
+carrega prosódia que frase curta não tem.
+
+Os dois juntos dão uns **17 minutos**, que é onde o timbre fica convincente.
 
 ## 2. Treinar
 

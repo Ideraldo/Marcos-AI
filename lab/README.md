@@ -22,7 +22,7 @@ lab/
   numbers.py     "10" e "dez" precisam pontuar igual
   devices.py     escolha de microfone e alto-falante, guardada em .devices.json
   speaker/       quem esta falando (ECAPA) — ver docs/voz-e-locutor.md
-  finetune/      gravar e treinar uma voz Piper propria — ver lab/finetune/README.md
+  finetune/      gravar, conferir e treinar uma voz Piper propria (README.md la dentro)
   run_speaker.py cadastrar vozes e testar o reconhecimento
   audio.py       wav, playback, gravação com fim de fala automático (VAD)
   out/           áudio gerado (fora do git)
