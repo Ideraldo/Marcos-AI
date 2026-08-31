@@ -27,6 +27,7 @@ gateway/     runs in Docker on localhost now, on a VPS later
 common/      shared message schemas -- the contract, never logic
 lab/         bench for picking the STT and TTS engines (not production)
 docs/        the plan, the structure guide, the decision log, the diary
+.claude/     project skills: /documentar closes a work session
 ```
 
 Two non-negotiables from the plan: **two separate processes from the first

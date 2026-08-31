@@ -418,7 +418,17 @@ hardware.
 
 ## Como continuar preenchendo
 
-Uma seção por sessão de trabalho, com data. O que vale registrar, em ordem de
+No fim de cada sessão, rode:
+
+```
+/documentar
+```
+
+A skill está em `.claude/skills/documentar/`. Ela lê o que mudou, pergunta o que
+só você sabe (as dúvidas, o que você achou que ia funcionar e não funcionou),
+escreve a entrada nova e propaga para os outros documentos.
+
+Uma seção por sessão de trabalho. O que vale registrar, em ordem de
 interesse para quem assiste:
 
 1. **O que deu errado e por quê** — é o que ninguém publica e todo mundo passa.
