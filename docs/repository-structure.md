@@ -7,7 +7,9 @@ colocar código novo. O plano define o *quê*; este arquivo define o *onde*.
 Nomes de pastas e código são em inglês; a documentação é em português.
 
 Onde a construção divergiu do plano, o motivo está em [decisions.md](decisions.md)
-— vale ler antes deste arquivo, porque a decisão D1 muda onde STT e TTS moram.
+— vale ler antes deste arquivo, porque a decisão D1 muda onde STT e TTS moram. O
+caminho até cada uma dessas decisões, com o que foi tentado e falhou, está no
+[diário de bordo](diario-de-bordo.md).
 
 ---
 

@@ -1,9 +1,12 @@
 # Marcos-AI — portable voice assistant
 
 Client-server voice assistant, built to replace a bedroom Alexa without giving
-up portability. Full specification in
-`docs/ultraplan-v3-assistente-voz-portatil.md`; where the build has since
-diverged from it, `docs/decisions.md` says so and why.
+up portability.
+
+- `docs/ultraplan-v3-assistente-voz-portatil.md` — the specification
+- `docs/decisions.md` — where the build diverged from it, and why
+- `docs/diario-de-bordo.md` — the narrative: doubts, attempts, what broke
+- `lab/RESULTS.md` — measured numbers for every STT and TTS candidate
 
 ## Layout
 
@@ -23,7 +26,7 @@ gateway/     runs in Docker on localhost now, on a VPS later
   conversation/  history and context assembly
 common/      shared message schemas -- the contract, never logic
 lab/         bench for picking the STT and TTS engines (not production)
-docs/        the plan, the structure guide, the decision log
+docs/        the plan, the structure guide, the decision log, the diary
 ```
 
 Two non-negotiables from the plan: **two separate processes from the first

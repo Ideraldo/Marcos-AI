@@ -1,5 +1,8 @@
 # Decisões tomadas depois do plano
 
+Registro seco: o quê e o porquê de cada decisão fechada. O caminho até ela — as
+dúvidas, as tentativas, o que quebrou — está no [diário de bordo](diario-de-bordo.md).
+
 O [ultraplan v3](ultraplan-v3-assistente-voz-portatil.md) é a especificação e
 **não é reescrito** — ele registra o que se sabia quando foi escrito. Este
 arquivo registra onde a construção divergiu dele, e por quê. Se o código
