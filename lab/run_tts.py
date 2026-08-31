@@ -40,7 +40,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    engine = ENGINES[args.engine](args.voice) if args.voice else ENGINES[args.engine]()
+    entry = ENGINES[args.engine]
+    engine = entry.factory(args.voice)
     keys = list(PHRASES) if args.phrase == "all" else [args.phrase]
 
     # Load the model on a throwaway phrase. Otherwise the first row carries the
@@ -50,7 +51,7 @@ def main() -> None:
     engine.synthesize(PHRASES[WARMUP])
     load = time.perf_counter() - started
 
-    print(f"\n{engine.name}  [{engine.kind}]   carga do modelo: {load:.2f}s\n")
+    print(f"\n{entry.flag} {engine.name}  [{engine.kind}/{entry.lang}]   carga: {load:.2f}s\n")
     print(f"{'frase':<16} {'sintese':>9} {'audio':>8} {'RTF':>6}  arquivo")
     print("-" * 74)
 

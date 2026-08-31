@@ -18,6 +18,8 @@ pytest-asyncio
 
 # lab (bancada de testes; nao vai para producao)
 faster-whisper
+torch
+transformers
 piper-tts
 vosk
 edge-tts      # so como referencia de qualidade; nao e candidato

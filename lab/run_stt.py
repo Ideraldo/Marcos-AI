@@ -117,8 +117,9 @@ def main() -> None:
 
     results = []
     for size in sizes:
-        engine = ENGINES[args.engine](size) if size else ENGINES[args.engine]()
-        print(f"\n{engine.name}  [{engine.kind}]")
+        engine = ENGINES[args.engine].factory(size)
+        entry = ENGINES[args.engine]
+        print(f"\n{entry.flag} {engine.name}  [{entry.kind}/{entry.lang}]")
         w, c, rtf = evaluate(engine, items, verbose=not args.quiet)
         results.append((engine.name, w, c, rtf))
         print(f"  media: WER {w:.1%}  CER {c:.1%}  RTF {rtf:.2f}")

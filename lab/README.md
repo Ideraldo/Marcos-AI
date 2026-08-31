@@ -13,6 +13,8 @@ lab/
   run_tts.py     sintetiza o conjunto e mede tempo e RTF
   run_stt.py     transcreve e pontua com WER/CER
   tts/  stt/     um arquivo por motor candidato
+  registry.py    quais motores existem e a flag [PT]
+  list.py        python -m lab.list -- mostra a bancada inteira
   metrics.py     normalização + WER/CER
   numbers.py     "10" e "dez" precisam pontuar igual
   audio.py       wav, playback, gravação de microfone
@@ -27,6 +29,9 @@ Sempre a partir da raiz do projeto (o `-m` já coloca a raiz no `sys.path`;
 não precisa de `PYTHONPATH`). Nos exemplos, `py` é `.\.venv\Scripts\python.exe`.
 
 ```powershell
+# 0. o que esta na bancada, com a flag [PT]
+py -m lab.list
+
 # 1. gerar e ouvir — toca cada frase e mostra o texto antes
 py -m lab.run_tts --engine edge --play
 py -m lab.run_tts --engine edge --voice pt-BR-AntonioNeural --play
@@ -61,3 +66,18 @@ Um motor só entra no gateway se couber no orçamento da seção 11 do plano:
 **STT em 200–500 ms** e **TTS até o primeiro chunk em 150–400 ms**. Note que o
 que importa no TTS é o *primeiro chunk*, não o áudio inteiro — falar antes de
 terminar de gerar é um dos dois maiores ganhos de latência do projeto.
+
+## A flag `[PT]`
+
+`python -m lab.list` marca com `[PT]` os modelos **especializados em português**
+— treinados ou ajustados só nele — contra os multilíngues, que apenas suportam
+pt entre dezenas de idiomas.
+
+A distinção importa por dois motivos. Um especialista costuma entregar a mesma
+precisão num modelo bem menor, e tamanho é o que decide o que cabe na Pi. E ele
+não tem para onde escapar: não vai tentar decidir se você falou espanhol, o que
+é exatamente o comportamento certo para um aparelho que só ouve pt-BR.
+
+O que ele perde é robustez fora do idioma — um nome próprio em inglês no meio da
+frase ("Discover Weekly") tende a sair pior. Por isso os dois grupos convivem na
+bancada em vez de um substituir o outro.
