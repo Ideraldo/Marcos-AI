@@ -23,9 +23,11 @@ esperando avaliação.
 
 | | Motor | Voz | RTF | Carga | Nativo | Ouvido |
 |---|---|---|---|---|---|---|
+| `[PT]` | **Piper** | **jeff-medium** | 0,05 | 1,9 s | 22050 Hz | ✓ **aprovada** |
+| `[PT]` | **Piper** | **cadu-medium** | 0,05 | 1,9 s | 22050 Hz | ✓ **aprovada** |
+| `[PT]` | Piper | miro-high | 0,05 | 2,8 s | 22050 Hz | *a ouvir (fora da lista oficial)* |
+| `[PT]` | Piper | dii-high | 0,05 | 2,7 s | 22050 Hz | *a ouvir (fora da lista oficial)* |
 | `[PT]` | Piper | faber-medium | 0,05 | 2,7 s | 22050 Hz | ✗ arrastado |
-| `[PT]` | Piper | cadu-medium | 0,05 | 1,9 s | 22050 Hz | *a ouvir* |
-| `[PT]` | Piper | jeff-medium | 0,05 | 1,9 s | 22050 Hz | *a ouvir* |
 | `[PT]` | Piper | edresson-low | 0,04 | 2,6 s | 16000 Hz | *a ouvir* |
 | | Kokoro | pf_dora (fem) | 0,33 | 15 s | 24000 Hz | *a ouvir* |
 | | Kokoro | pm_alex (masc) | 0,34 | 17 s | 24000 Hz | *a ouvir* |
@@ -50,9 +52,9 @@ mais provável de agradar. Multilíngue, não especialista.
 sumia, sem erro nenhum. Corrigido soletrando os dígitos antes da síntese
 (`lab/numbers.py`). O áudio da frase foi de 3,55 s para 9,41 s.
 
-Se nenhuma voz agradar, o caminho é fine-tune do Piper com a sua voz — 30 a 60
-min de gravação, algumas horas na RTX 2060, e sai um modelo de 60 MB com o seu
-timbre rodando a RTF 0,05. Detalhes em [`docs/voz-e-locutor.md`](../docs/voz-e-locutor.md).
+**Decidido: jeff e cadu aprovadas, e o fine-tune vai acontecer.** O pipeline está
+pronto em [`lab/finetune/`](finetune/README.md) — gravar 95 frases, treinar na
+RTX 2060, exportar um .onnx de 60 MB com o seu timbre a RTF 0,05.
 
 *Sua avaliação (por voz):* naturalidade ___/5 · prosódia de pergunta ___/5 ·
 números e horas ___/5 · cansa depois de 10 usos? ___

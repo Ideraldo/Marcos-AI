@@ -20,7 +20,8 @@ pytest-asyncio
 
 # lab (bancada de testes; nao vai para producao)
 faster-whisper
-torch
+torch          # com CUDA: --index-url https://download.pytorch.org/whl/cu124
+torchaudio
 transformers
 piper-tts
 vosk
@@ -28,3 +29,4 @@ edge-tts      # so como referencia de qualidade; nao e candidato
 soundfile
 kokoro
 speechbrain
+piper-tts[train]   # extras de treino: lightning etc (fine-tune de voz)

@@ -85,7 +85,7 @@ nada em tempo de execução.
 O que não dá é usar clonagem para uma resposta livre do LLM, que só existe na
 hora.
 
-### Fine-tune do Piper (a resposta de verdade)
+### Fine-tune do Piper (a resposta de verdade) — ESCOLHIDO
 
 Partindo de um checkpoint pt-BR e treinando com **30 a 60 minutos** da sua voz
 gravada, sai um modelo Piper de 60 MB com o seu timbre, rodando em RTF 0,05 na
@@ -93,6 +93,11 @@ Pi. É o único caminho que entrega voz personalizada **e** velocidade.
 
 Custo: gravar meia hora de fala limpa e transcrita, mais algumas horas de GPU. A
 RTX 2060 de 6 GB dá conta.
+
+**Pipeline pronto em [`lab/finetune/`](../lab/finetune/README.md).** Os
+checkpoints de treino pt-BR não estão mais no repositório oficial do Piper (saiu
+do ar); os que sobreviveram estão no OpenVoiceOS, e são de vozes "high" que nem
+aparecem na lista oficial de download.
 
 ### Estado atual
 

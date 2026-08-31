@@ -74,6 +74,7 @@ def record_until_silence(
     max_seconds: float = 30.0,
     start_timeout: float = 20.0,
     aggressiveness: int = 3,
+    rate: int = SAMPLE_RATE,
 ) -> bytes:
     """Record until you stop talking, using the same VAD the device will use.
 
@@ -95,8 +96,11 @@ def record_until_silence(
     import sounddevice as sd
     import webrtcvad
 
+    if rate not in (8000, 16000, 32000, 48000):
+        raise ValueError(f"webrtcvad nao aceita {rate} Hz")
+
     frame_ms = 30
-    frame_samples = int(SAMPLE_RATE * frame_ms / 1000)
+    frame_samples = int(rate * frame_ms / 1000)
     needed_silence = silence_ms // frame_ms
     needed_speech = 3  # consecutive speech frames before we commit
     calibration_frames = 10
@@ -117,7 +121,7 @@ def record_until_silence(
         return float(np.sqrt(np.mean(samples**2))) if len(samples) else 0.0
 
     with sd.RawInputStream(
-        samplerate=SAMPLE_RATE,
+        samplerate=rate,
         blocksize=frame_samples,
         device=device,
         dtype="int16",
@@ -136,7 +140,7 @@ def record_until_silence(
             elapsed += frame_ms / 1000
             loud = rms(frame) > threshold
 
-            if vad.is_speech(frame, SAMPLE_RATE) and loud:
+            if vad.is_speech(frame, rate) and loud:
                 voiced += 1
                 silent = 0
             else:
@@ -159,3 +163,21 @@ def record_until_silence(
                 break
 
     return b"".join(collected)
+
+
+def resample_hq(samples: np.ndarray, source_rate: int, target_rate: int) -> np.ndarray:
+    """Band-limited resampling, for audio that will train a model.
+
+    ``resample`` above interpolates linearly, which is fine for comparing
+    engines and wrong for building a dataset: the aliasing it leaves behind is
+    exactly the kind of artefact a vocoder learns to reproduce.
+    """
+    if source_rate == target_rate:
+        return samples
+
+    import torch
+    import torchaudio.functional as F
+
+    signal = torch.tensor(samples.astype(np.float32) / 32768.0)
+    resampled = F.resample(signal, source_rate, target_rate)
+    return (resampled.clamp(-1.0, 1.0).numpy() * 32767).astype(np.int16)

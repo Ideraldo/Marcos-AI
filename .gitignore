@@ -13,3 +13,5 @@ lab/out/
 lab/models/
 lab/.devices.json
 lab/speaker/voices.json
+lab/finetune/dataset/
+lab/finetune/runs/
