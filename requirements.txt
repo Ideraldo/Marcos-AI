@@ -17,6 +17,8 @@ pytest
 pytest-asyncio
 
 # lab (bancada de testes; nao vai para producao)
-edge-tts
-soundfile
 faster-whisper
+piper-tts
+vosk
+edge-tts      # so como referencia de qualidade; nao e candidato
+soundfile

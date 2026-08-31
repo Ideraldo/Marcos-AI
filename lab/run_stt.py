@@ -1,14 +1,14 @@
 """Compare STT engines, on synthetic audio or on your own voice.
 
-    # transcribe what a TTS engine produced, scored against the known text
-    python -m lab.run_stt --engine faster-whisper --size small --source edge
+    # rank models cheaply against audio a TTS engine produced
+    python -m lab.run_stt --engine faster-whisper --size tiny,base,small --source piper_faber_medium
 
-    # the test that actually matters: your voice, your microphone, your room
+    # the test that actually decides: your voice, your microphone, your room
     python -m lab.run_stt --engine faster-whisper --size small --record
 
-Synthetic audio is clean and flatters every engine -- treat it as a smoke test
-and a way to rank models cheaply. The plan is explicit that the simulation does
-not validate the microphone in a real room (section 2).
+Synthetic audio is clean and flatters every engine -- treat it as a smoke test.
+The plan is explicit that the simulation does not validate a microphone in a
+real room (section 2).
 """
 
 from __future__ import annotations
@@ -19,29 +19,36 @@ from pathlib import Path
 
 from lab.audio import duration_seconds, record, write_wav
 from lab.metrics import cer, wer
-from lab.phrases import PHRASES
+from lab.phrases import PHRASES, WARMUP
 from lab.stt import ENGINES
 
 OUT = Path(__file__).resolve().parent / "out"
 
+Item = tuple[str, Path, str]
 
-def collect_from_tts(source: str) -> list[tuple[str, Path, str]]:
+
+def available_sources() -> list[str]:
+    directory = OUT / "tts"
+    return sorted(p.name for p in directory.iterdir() if p.is_dir()) if directory.exists() else []
+
+
+def collect_from_tts(source: str, keys: list[str]) -> list[Item]:
     directory = OUT / "tts" / source
     if not directory.exists():
-        raise SystemExit(f"nada em {directory} -- rode primeiro: python -m lab.run_tts --engine {source}")
-    items = []
-    for key, text in PHRASES.items():
-        wav = directory / f"{key}.wav"
-        if wav.exists():
-            items.append((key, wav, text))
-    return items
+        options = "\n  ".join(available_sources()) or "(nenhuma -- rode lab.run_tts primeiro)"
+        raise SystemExit(f"nao encontrei {directory}\n\nfontes disponiveis:\n  {options}")
+    return [
+        (key, directory / f"{key}.wav", PHRASES[key])
+        for key in keys
+        if (directory / f"{key}.wav").exists()
+    ]
 
 
-def collect_from_mic(keys: list[str], seconds: float) -> list[tuple[str, Path, str]]:
-    items = []
+def collect_from_mic(keys: list[str], seconds: float) -> list[Item]:
+    items: list[Item] = []
     for key in keys:
         text = PHRASES[key]
-        print(f"\n  [{key}] leia em voz alta:\n    \"{text}\"")
+        print(f'\n  [{key}] leia em voz alta:\n    "{text}"')
         input("  ENTER para gravar... ")
         print(f"  gravando {seconds:.0f}s...", flush=True)
         pcm = record(seconds)
@@ -52,25 +59,14 @@ def collect_from_mic(keys: list[str], seconds: float) -> list[tuple[str, Path, s
     return items
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="STT bench")
-    parser.add_argument("--engine", required=True, choices=sorted(ENGINES))
-    parser.add_argument("--size", help="model size, engine-specific")
-    parser.add_argument("--source", default="edge", help="TTS engine whose output to transcribe")
-    parser.add_argument("--record", action="store_true", help="use your microphone instead")
-    parser.add_argument("--phrase", default="all", help=f"{'|'.join(PHRASES)}|all")
-    parser.add_argument("--seconds", type=float, default=8.0, help="recording length")
-    args = parser.parse_args()
-
-    keys = list(PHRASES) if args.phrase == "all" else [args.phrase]
-    items = collect_from_mic(keys, args.seconds) if args.record else [
-        item for item in collect_from_tts(args.source) if item[0] in keys
-    ]
-
-    engine = ENGINES[args.engine](args.size) if args.size else ENGINES[args.engine]()
-    origin = "microfone" if args.record else f"tts:{args.source}"
-    print(f"\n{engine.name}  [{engine.kind}]  fonte: {origin}")
-    print("  (a primeira execucao baixa o modelo)\n")
+def evaluate(engine, items: list[Item], verbose: bool) -> tuple[float, float, float]:
+    """Return mean WER, mean CER and the overall real-time factor."""
+    # Load the model on one phrase first: startup is paid once at boot, not per
+    # utterance, and folding it into the first row makes every model look slow.
+    started = time.perf_counter()
+    engine.transcribe(items[0][1])
+    load = time.perf_counter() - started
+    print(f"  carga do modelo: {load:.2f}s")
 
     total_wer = total_cer = total_time = total_audio = 0.0
     for key, wav, reference in items:
@@ -85,18 +81,54 @@ def main() -> None:
         total_time += elapsed
         total_audio += seconds
 
-        flag = "ok " if w == 0 else "ERR"
-        print(f"[{flag}] {key}  WER {w:5.1%}  CER {c:5.1%}  {elapsed:.2f}s  (RTF {elapsed / seconds:.2f})")
-        if w:
-            print(f"        esperado: {reference}")
-            print(f"        ouviu:    {hypothesis}")
+        if verbose:
+            flag = "ok " if w == 0 else "ERR"
+            print(f"  [{flag}] {key:<16} WER {w:5.1%}  CER {c:5.1%}  RTF {elapsed / seconds:.2f}")
+            if w:
+                print(f"        esperado: {reference}")
+                print(f"        ouviu:    {hypothesis}")
 
     n = len(items)
-    if n:
-        print(
-            f"\nmedia: WER {total_wer / n:.1%}  CER {total_cer / n:.1%}  "
-            f"RTF {total_time / total_audio:.2f}  ({n} frases)"
-        )
+    return total_wer / n, total_cer / n, total_time / total_audio
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="STT bench")
+    parser.add_argument("--engine", required=True, choices=sorted(ENGINES))
+    parser.add_argument("--size", help="model size(s), comma separated")
+    parser.add_argument("--source", default="piper_faber_medium", help="folder under lab/out/tts")
+    parser.add_argument("--record", action="store_true", help="use your microphone instead")
+    parser.add_argument("--phrase", default="all", help=f"{'|'.join(PHRASES)}|all")
+    parser.add_argument("--seconds", type=float, default=8.0, help="recording length")
+    parser.add_argument("--quiet", action="store_true", help="only the summary line per model")
+    args = parser.parse_args()
+
+    keys = list(PHRASES) if args.phrase == "all" else [args.phrase]
+    if WARMUP not in keys:
+        keys = [WARMUP, *keys]
+
+    items = collect_from_mic(keys, args.seconds) if args.record else collect_from_tts(args.source, keys)
+    if not items:
+        raise SystemExit("nenhum audio para transcrever")
+
+    sizes = args.size.split(",") if args.size else [None]
+    origin = "microfone" if args.record else f"tts:{args.source}"
+    print(f"\nfonte: {origin}   {len(items)} frases")
+
+    results = []
+    for size in sizes:
+        engine = ENGINES[args.engine](size) if size else ENGINES[args.engine]()
+        print(f"\n{engine.name}  [{engine.kind}]")
+        w, c, rtf = evaluate(engine, items, verbose=not args.quiet)
+        results.append((engine.name, w, c, rtf))
+        print(f"  media: WER {w:.1%}  CER {c:.1%}  RTF {rtf:.2f}")
+
+    if len(results) > 1:
+        print(f"\n{'modelo':<28} {'WER':>7} {'CER':>7} {'RTF':>7}")
+        print("-" * 52)
+        for name, w, c, rtf in sorted(results, key=lambda r: r[1]):
+            print(f"{name:<28} {w:>6.1%} {c:>6.1%} {rtf:>7.2f}")
+
     print("\nanote em lab/RESULTS.md\n")
 
 

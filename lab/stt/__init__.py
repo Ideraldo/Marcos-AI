@@ -13,6 +13,13 @@ def _faster_whisper(size: str | None = None) -> STTCandidate:
     return FasterWhisper(size or "small")
 
 
+def _vosk(size: str | None = None) -> STTCandidate:
+    from lab.stt.vosk_engine import Vosk
+
+    return Vosk(size or "small")
+
+
 ENGINES: dict[str, Callable[..., STTCandidate]] = {
     "faster-whisper": _faster_whisper,
+    "vosk": _vosk,
 }

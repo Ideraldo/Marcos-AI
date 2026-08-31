@@ -3,68 +3,83 @@
 Registro vivo. Cada motor testado ganha uma linha; a coluna **Ouvido** é sua e
 vale mais que as outras.
 
-Medidas em: Windows 11, Python 3.12, CPU (sem GPU). Áudio de teste: as sete
-frases de `lab/phrases.py`.
+**Escopo fechado: só offline.** STT e TTS rodam na Pi, porque o roteador de
+intenções trabalha sobre texto — sem STT local não existe nível 0, e nível 0 com
+a internet caída é requisito. Para a VPS sobe só texto. O edge-tts fica no
+arquivo apenas como teto de qualidade para comparação, não como candidato.
+
+Medidas em: Windows 11, Python 3.12, CPU (sem GPU). Conjunto: as sete frases de
+`lab/phrases.py`. **Na Pi 5, conte com 3 a 5 vezes esses tempos.**
 
 ---
 
 ## TTS
 
-| Motor | Voz | Tipo | RTF médio | Ouvido | Veredito |
-|---|---|---|---|---|---|
-| edge-tts | Francisca | nuvem | 0,62 | *a preencher* | *a preencher* |
-| edge-tts | Antonio | nuvem | — | *não testado* | |
-| edge-tts | Thalita | nuvem | — | *não testado* | |
-| Piper | faber-medium | local | — | *não instalado* | |
-| Kokoro | — | local | — | *não instalado* | |
+| Motor | Voz | Tipo | RTF | Carga | Tamanho | Ouvido |
+|---|---|---|---|---|---|---|
+| **Piper** | faber-medium | local | **0,05** | 2,7 s | 60 MB | *a preencher* |
+| Piper | cadu-medium | local | — | — | 60 MB | *não testado* |
+| Piper | jeff-medium | local | — | — | 60 MB | *não testado* |
+| Piper | edresson-low | local | — | — | 60 MB | *não testado* |
+| ~~edge-tts~~ | Francisca | nuvem | 0,62 | — | — | *só referência* |
 
-### Notas por motor
+**Piper faber-medium** — RTF 0,05, constante em todas as frases: sintetiza 20x
+mais rápido que o tempo real. Carrega em 2,7 s uma única vez, no boot. Saída
+nativa a 22050 Hz. Mesmo com a folga de 5x da Pi, fica muito abaixo dos
+150–400 ms do orçamento da seção 11. **É o candidato.**
 
-**edge-tts (Francisca)** — RTF 0,62 no conjunto todo. A primeira frase custou
-2,6 s e `estrangeirismo` deu um pico de 11,6 s: é rede, não síntese, e é
-exatamente o risco de depender da nuvem para falar. Precisa ser medido de novo
-com streaming ligado, porque o número que importa é o primeiro chunk, não o
-arquivo pronto.
+Contra o edge-tts: 12x mais rápido, sem rede, e sem o pico de 11,6 s que a
+nuvem deu numa frase. O que falta é o seu ouvido decidir se a qualidade paga.
 
-*Sua avaliação:* naturalidade ___/5 · prosódia de pergunta ___/5 ·
+*Sua avaliação (por voz):* naturalidade ___/5 · prosódia de pergunta ___/5 ·
 números e horas ___/5 · cansa depois de 10 usos? ___
 
 ---
 
 ## STT
 
-| Motor | Modelo | Tipo | WER | CER | RTF | Ouvido |
-|---|---|---|---|---|---|---|
-| faster-whisper | small / int8 | local | 4,1% | 2,6% | 0,61 | *áudio sintético* |
-| faster-whisper | tiny | local | — | — | — | *não testado* |
-| faster-whisper | base | local | — | — | — | *não testado* |
-| faster-whisper | medium | local | — | — | — | *não testado* |
-| Vosk | pt-br | local | — | — | — | *não instalado* |
+Sobre áudio sintético do Piper — ver o alerta grande logo abaixo.
 
-### Notas por motor
+| Motor | Modelo | WER | CER | RTF | Tamanho |
+|---|---|---|---|---|---|
+| **faster-whisper** | small / int8 | **17,6%** | 10,1% | 0,65 | 464 MB |
+| faster-whisper | base / int8 | 28,3% | 14,7% | **0,21** | 145 MB |
+| faster-whisper | tiny / int8 | 31,7% | 15,2% | 0,12 | 75 MB |
+| Vosk | small-pt-0.3 | 33,1% | 26,0% | 0,42 | 50 MB |
 
-**faster-whisper small/int8** — sobre áudio sintético do edge-tts, WER 4,1%.
-Os dois erros restantes:
+**A curva é clara:** cada degrau de tamanho compra acerto e custa tempo. `small`
+erra metade do que `tiny` e leva 5x mais.
 
-- `hora`: "para as sete" → "para 7", come o artigo. Cosmético.
-- `numeros`: "CEP" → "CEPI" e quebra o número do CEP. Sequência longa de dígitos
-  é o ponto fraco, o que importa pouco para comandos de quarto.
+**Vosk perde nos dois eixos** — erra mais que o `base` e é o dobro mais lento
+que ele. E erra de um jeito perigoso: "acender a luz do **quarto**" virou "luz do
+**quadro**", e a frase do Spotify virou "eles descobriram que não se pode sair da
+sala". O modelo pt-BR dele é de 2020 e mostra a idade. Continua interessante por
+um motivo só: é o único nativamente streaming, que é o que um aparelho com wake
+word realmente quer. Vale reavaliar se o modelo grande (1,6 GB) mudar o quadro.
 
-Primeira transcrição levou 5,2 s (modelo frio); as seguintes ficaram em ~2,7 s
-para 3–4 s de áudio. **Ainda longe** dos 200–500 ms da seção 11 — mas isso é
-áudio inteiro, não streaming, e o modelo ainda não foi medido nas variantes
-menores.
+### ⚠️ Estes números estão contaminados
 
-⚠️ **Estes números são de áudio sintético, que é limpo demais.** Só valem para
-ranquear modelos entre si. O número real sai de `--record`, com sua voz e o seu
-ruído de quarto.
+O **mesmo** `faster-whisper small` deu **4,1% de WER no áudio do edge-tts** e
+**17,6% no áudio do Piper**. O modelo não mudou — o material mudou. A voz do
+Piper articula pior, e o STT come sílabas: "Timer" virou "Tame", "quarto" virou
+"4".
+
+Ou seja, esta tabela mede tanto a dicção do Piper quanto o ouvido do Whisper.
+Serve para ranquear os modelos entre si, e serve como aviso de que o TTS local
+tem custo de inteligibilidade. **Não serve para escolher o STT.**
+
+O número que decide sai daqui:
+
+```powershell
+.\.venv\Scripts\python.exe -m lab.run_stt --engine faster-whisper --size tiny,base,small --record
+```
 
 ---
 
 ## Fila de testes
 
-1. ~~edge-tts~~ · faster-whisper small — feito, falta seu ouvido
-2. Piper (local, escolha do plano) — o candidato que roda na Pi
-3. faster-whisper nos tamanhos tiny/base/medium — a curva custo × acerto
-4. Kokoro (alternativa citada no plano) e Vosk (leve, offline)
-5. Reteste do vencedor com streaming e medindo o primeiro chunk
+1. ~~Piper (4 vozes baixadas)~~ · ~~faster-whisper tiny/base/small~~ · ~~Vosk~~ — falta seu ouvido e sua voz
+2. **Gravar sua voz** e refazer a varredura de STT — é o que decide
+3. Kokoro (local, alternativa citada no plano) como desafiante do Piper
+4. whisper.cpp / sherpa-onnx — melhores em ARM que o faster-whisper
+5. Medir o vencedor com streaming, cronometrando o primeiro chunk

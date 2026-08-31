@@ -19,7 +19,7 @@ import numpy as np
 MODEL_DIR = Path(__file__).resolve().parents[1] / "models" / "piper"
 
 #: The pt-BR voices on Hugging Face, quality low -> medium.
-VOICES = ["pt_BR-faber-medium", "pt_BR-edresson-low", "pt_BR-cadu-medium"]
+VOICES = ["pt_BR-faber-medium", "pt_BR-cadu-medium", "pt_BR-jeff-medium", "pt_BR-edresson-low"]
 
 
 class PiperTTS:

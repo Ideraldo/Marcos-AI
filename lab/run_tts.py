@@ -1,25 +1,30 @@
 """Compare TTS engines on the fixed pt-BR phrase set.
 
-    python -m lab.run_tts --engine edge
-    python -m lab.run_tts --engine edge --voice pt-BR-AntonioNeural --play
+    python -m lab.run_tts --engine piper
+    python -m lab.run_tts --engine piper --voice pt_BR-cadu-medium --play
     python -m lab.run_tts --engine piper --phrase hora --play
 
-Writes lab/out/tts/<engine>/<phrase>.wav and prints the objective half of the
-comparison. The other half is you listening -- write that down in lab/RESULTS.md.
+Writes lab/out/tts/<engine_voice>/<phrase>.wav and prints the objective half of
+the comparison. The other half is you listening -- write that down in RESULTS.md.
 """
 
 from __future__ import annotations
 
 import argparse
+import re
 import time
 from pathlib import Path
 
 from common.messages import SAMPLE_RATE
 from lab.audio import play, resample, write_wav
-from lab.phrases import PHRASES
+from lab.phrases import PHRASES, WARMUP
 from lab.tts import ENGINES
 
 OUT = Path(__file__).resolve().parent / "out" / "tts"
+
+
+def slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
 def main() -> None:
@@ -38,10 +43,18 @@ def main() -> None:
     engine = ENGINES[args.engine](args.voice) if args.voice else ENGINES[args.engine]()
     keys = list(PHRASES) if args.phrase == "all" else [args.phrase]
 
-    print(f"\n{engine.name}  [{engine.kind}]\n")
+    # Load the model on a throwaway phrase. Otherwise the first row carries the
+    # startup cost and looks like the engine is slow -- on the Pi the model is
+    # loaded once at boot and never again.
+    started = time.perf_counter()
+    engine.synthesize(PHRASES[WARMUP])
+    load = time.perf_counter() - started
+
+    print(f"\n{engine.name}  [{engine.kind}]   carga do modelo: {load:.2f}s\n")
     print(f"{'frase':<16} {'sintese':>9} {'audio':>8} {'RTF':>6}  arquivo")
     print("-" * 74)
 
+    directory = OUT / slug(engine.name)
     total_synth = total_audio = 0.0
     for key in keys:
         text = PHRASES[key]
@@ -50,27 +63,29 @@ def main() -> None:
         elapsed = time.perf_counter() - started
 
         seconds = len(samples) / rate
+        native_rate = rate
         if not args.keep_rate:
             samples, rate = resample(samples, rate, SAMPLE_RATE), SAMPLE_RATE
 
-        path = OUT / args.engine / f"{key}.wav"
+        path = directory / f"{key}.wav"
         write_wav(path, samples.tobytes(), rate)
 
         total_synth += elapsed
         total_audio += seconds
-        # RTF < 1 means it synthesises faster than real time -- the bar for a Pi.
-        print(
-            f"{key:<16} {elapsed:>8.2f}s {seconds:>7.2f}s "
-            f"{elapsed / seconds:>6.2f}  {path.relative_to(Path.cwd()) if path.is_relative_to(Path.cwd()) else path}"
-        )
+        # RTF < 1 means faster than real time. On a Pi 5, budget roughly 3-5x
+        # this number -- that is the only figure that decides anything.
+        print(f"{key:<16} {elapsed:>8.2f}s {seconds:>7.2f}s {elapsed / seconds:>6.2f}  {path}")
         if args.play:
-            print(f"   \"{text}\"")
+            print(f'   "{text}"')
             play(path)
 
     if len(keys) > 1:
         print("-" * 74)
-        print(f"{'TOTAL':<16} {total_synth:>8.2f}s {total_audio:>7.2f}s {total_synth / total_audio:>6.2f}")
-    print(f"\nagora ouca e anote em lab/RESULTS.md\n")
+        print(
+            f"{'TOTAL':<16} {total_synth:>8.2f}s {total_audio:>7.2f}s "
+            f"{total_synth / total_audio:>6.2f}   ({native_rate} Hz nativo)"
+        )
+    print(f"\nsaida: {directory}\nanote o que ouviu em lab/RESULTS.md\n")
 
 
 if __name__ == "__main__":
