@@ -23,18 +23,21 @@ lab/
 
 ## Como usar
 
-```bash
-$env:PYTHONPATH = (Get-Location).Path      # PowerShell, uma vez por terminal
+Sempre a partir da raiz do projeto (o `-m` já coloca a raiz no `sys.path`;
+não precisa de `PYTHONPATH`). Nos exemplos, `py` é `.\.venv\Scripts\python.exe`.
 
-# 1. gerar e ouvir
-python -m lab.run_tts --engine edge --play
-python -m lab.run_tts --engine edge --voice pt-BR-AntonioNeural --phrase hora --play
+```powershell
+# 1. gerar e ouvir — toca cada frase e mostra o texto antes
+py -m lab.run_tts --engine edge --play
+py -m lab.run_tts --engine edge --voice pt-BR-AntonioNeural --play
+py -m lab.run_tts --engine edge --phrase hora --play        # só uma frase
 
-# 2. transcrever o que foi gerado (barato, ranqueia modelos)
-python -m lab.run_stt --engine faster-whisper --size small --source edge
+# 2. transcrever o que foi gerado (barato, ranqueia modelos entre si)
+py -m lab.run_stt --engine faster-whisper --size small --source edge
+py -m lab.run_stt --engine faster-whisper --size tiny --source edge
 
 # 3. o teste que vale: sua voz, seu microfone, seu quarto
-python -m lab.run_stt --engine faster-whisper --size small --record
+py -m lab.run_stt --engine faster-whisper --size small --record
 ```
 
 ## Como ler os números
