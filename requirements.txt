@@ -26,3 +26,5 @@ piper-tts
 vosk
 edge-tts      # so como referencia de qualidade; nao e candidato
 soundfile
+kokoro
+speechbrain

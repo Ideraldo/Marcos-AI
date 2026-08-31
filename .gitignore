@@ -12,3 +12,4 @@ tts_cache/
 lab/out/
 lab/models/
 lab/.devices.json
+lab/speaker/voices.json

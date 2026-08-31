@@ -17,35 +17,63 @@ Medidas em: Windows 11, Python 3.12, CPU (sem GPU). Conjunto: as sete frases de
 
 ## TTS
 
-| | Motor | Voz | RTF | Carga | Nativo | Tamanho | Ouvido |
-|---|---|---|---|---|---|---|---|
-| `[PT]` | **Piper** | faber-medium | **0,05** | 2,7 s | 22050 Hz | 60 MB | *a preencher* |
-| `[PT]` | Piper | cadu / jeff / edresson | — | — | 22050 Hz | 60 MB | *não testado* |
-| `[PT]` | MMS (Meta) | por | 0,27 | ~15 s | 16000 Hz | ~145 MB | *a preencher* |
-| | ~~edge-tts~~ | Francisca | 0,62 | — | 24000 Hz | nuvem | *só referência* |
+**Você reprovou os dois primeiros:** Piper faber soa arrastado, MMS soa robótico.
+Kokoro e as outras três vozes do Piper entraram por causa disso e estão geradas,
+esperando avaliação.
 
-**Piper faber-medium** — RTF 0,05, constante em todas as frases: 20x mais rápido
-que o tempo real. Carrega em 2,7 s, uma vez no boot. Lê números corretamente sem
-ajuda. Mesmo com a folga de 5x da Pi, fica muito abaixo dos 150–400 ms do
-orçamento. **É o candidato a bater.**
+| | Motor | Voz | RTF | Carga | Nativo | Ouvido |
+|---|---|---|---|---|---|---|
+| `[PT]` | Piper | faber-medium | 0,05 | 2,7 s | 22050 Hz | ✗ arrastado |
+| `[PT]` | Piper | cadu-medium | 0,05 | 1,9 s | 22050 Hz | *a ouvir* |
+| `[PT]` | Piper | jeff-medium | 0,05 | 1,9 s | 22050 Hz | *a ouvir* |
+| `[PT]` | Piper | edresson-low | 0,04 | 2,6 s | 16000 Hz | *a ouvir* |
+| | Kokoro | pf_dora (fem) | 0,33 | 15 s | 24000 Hz | *a ouvir* |
+| | Kokoro | pm_alex (masc) | 0,34 | 17 s | 24000 Hz | *a ouvir* |
+| | Kokoro | pm_santa (masc) | 0,34 | 17 s | 24000 Hz | *a ouvir* |
+| `[PT]` | MMS (Meta) | por | 0,27 | ~15 s | 16000 Hz | ✗ robótico |
+| | ~~edge-tts~~ | Francisca | 0,62 | — | 24000 Hz | *só referência* |
 
-**MMS-TTS (facebook/mms-tts-por)** — também especializado, linhagem diferente
-(VITS da Meta). RTF 0,27: 5x mais lento que o Piper, ainda dentro do orçamento,
-mas com muito menos margem para a Pi. Sai a 16 kHz, exatamente a taxa do
-pipeline, então não perde nada no resample.
+```powershell
+.\.venv\Scripts\python.exe -m lab.run_tts --engine kokoro --voice pm_alex --play
+.\.venv\Scripts\python.exe -m lab.run_tts --engine piper --voice pt_BR-jeff-medium --play
+```
 
-> ⚠️ **Ele pulava todos os números.** "O CEP é 04538-133" saía como "O sepé, ele"
-> — os dígitos sumiam sem erro nenhum. O tokenizer uroman não tem normalizador
-> numérico. Corrigido soletrando os dígitos antes da síntese (`lab/numbers.py`,
-> o mesmo soletrador que a pontuação de WER já usava). O áudio da frase foi de
-> 3,55 s para 9,41 s depois do conserto. Fica o registro: um TTS que não lê
-> número é inútil para "são sete e quinze".
+**Piper** — RTF 0,05 constante, 20x mais rápido que o tempo real, e o único com
+folga confortável na Pi. Lê números sem ajuda. É o piso de velocidade que os
+outros têm que justificar.
+
+**Kokoro** (StyleTTS2, 82M) — RTF 0,33, ainda dentro do orçamento mas com 6x
+menos margem que o Piper. É o mais citado hoje para projetos novos e a aposta
+mais provável de agradar. Multilíngue, não especialista.
+
+**MMS-TTS** — pulava todos os números em silêncio; "04538-133" simplesmente
+sumia, sem erro nenhum. Corrigido soletrando os dígitos antes da síntese
+(`lab/numbers.py`). O áudio da frase foi de 3,55 s para 9,41 s.
+
+Se nenhuma voz agradar, o caminho é fine-tune do Piper com a sua voz — 30 a 60
+min de gravação, algumas horas na RTX 2060, e sai um modelo de 60 MB com o seu
+timbre rodando a RTF 0,05. Detalhes em [`docs/voz-e-locutor.md`](../docs/voz-e-locutor.md).
 
 *Sua avaliação (por voz):* naturalidade ___/5 · prosódia de pergunta ___/5 ·
 números e horas ___/5 · cansa depois de 10 usos? ___
 
 ---
 
+## Reconhecimento de locutor
+
+Modelo separado do STT (ECAPA-TDNN, 80 MB). Medido com as suas sete gravações:
+
+| Comparação | Similaridade |
+|---|---|
+| Sua voz × sua própria média | **0,69 – 1,00** |
+| Sua voz × Piper faber | 0,21 (máx 0,24) |
+| Sua voz × edge Francisca | 0,24 (máx 0,26) |
+| Sua voz × MMS | 0,02 (máx 0,08) |
+
+Separação larga: o seu pior caso está bem acima do melhor caso de um impostor.
+Limiar fixado em 0,45, no meio do vazio. Ver [`docs/voz-e-locutor.md`](../docs/voz-e-locutor.md).
+
+---
 ## STT — sua voz, microfone Fifine (o que decide)
 
 Uma única gravação de cada frase, pontuada por todos os modelos. Mesma tomada,
@@ -137,7 +165,7 @@ Repetir sobre a sua voz:
 
 1. ~~Piper~~ · ~~MMS~~ · ~~whisper tiny/base/small~~ · ~~wav2vec2 pt~~ · ~~Vosk~~
 2. ~~Gravar a voz real e refazer a varredura de STT~~ — **feito, o `small` ganhou**
-3. **Ouvir Piper × MMS e escolher a voz** — a única escolha ainda em aberto
+3. **Ouvir Kokoro e as demais vozes do Piper** — a escolha de voz segue aberta
 4. whisper.cpp / sherpa-onnx com o `small`: se forem rápidos o bastante em ARM,
    resolvem a tensão da seção acima sem concessão de qualidade
 5. wav2vec2 com decoder kenlm, direto na Pi

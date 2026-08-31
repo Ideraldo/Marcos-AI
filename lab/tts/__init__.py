@@ -15,6 +15,12 @@ def _piper(voice: str | None = None):
     return PiperTTS(voice or VOICES[0])
 
 
+def _kokoro(voice: str | None = None):
+    from lab.tts.kokoro_engine import VOICES, KokoroTTS
+
+    return KokoroTTS(voice or VOICES[0])
+
+
 def _mms(_: str | None = None):
     from lab.tts.mms import MMSTTS
 
@@ -29,6 +35,7 @@ def _edge(voice: str | None = None):
 
 ENGINES: dict[str, Entry] = {
     "piper": Entry(_piper, lang="pt", kind="local", note="um modelo por voz pt-BR, 60 MB"),
+    "kokoro": Entry(_kokoro, lang="multi", kind="local", note="StyleTTS2 82M, vozes pf_dora|pm_alex|pm_santa"),
     "mms": Entry(_mms, lang="pt", kind="local", note="VITS da Meta treinado so em portugues"),
     "edge": Entry(_edge, lang="multi", kind="cloud", note="so referencia de qualidade"),
 }

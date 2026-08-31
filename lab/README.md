@@ -21,6 +21,8 @@ lab/
   metrics.py     normalização + WER/CER
   numbers.py     "10" e "dez" precisam pontuar igual
   devices.py     escolha de microfone e alto-falante, guardada em .devices.json
+  speaker/       quem esta falando (ECAPA) — ver docs/voz-e-locutor.md
+  run_speaker.py cadastrar vozes e testar o reconhecimento
   audio.py       wav, playback, gravação com fim de fala automático (VAD)
   out/           áudio gerado (fora do git)
   models/        modelos baixados (fora do git)

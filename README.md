@@ -76,3 +76,11 @@ RTF and WER/CER, and flags which models are Portuguese specialists.
 ```
 
 Current standings and the open questions live in `lab/RESULTS.md`.
+
+Speaker recognition (who is talking) and the path to a custom voice are covered
+in `docs/voz-e-locutor.md`:
+
+```powershell
+.\.venv\Scripts\python.exe -m lab.run_speaker enroll Ideraldo
+.\.venv\Scripts\python.exe -m lab.run_speaker who
+```
