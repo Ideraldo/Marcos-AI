@@ -46,64 +46,99 @@ números e horas ___/5 · cansa depois de 10 usos? ___
 
 ---
 
-## STT
+## STT — sua voz, microfone Fifine (o que decide)
 
-Sobre áudio sintético do Piper — ver o alerta grande logo abaixo.
+Uma única gravação de cada frase, pontuada por todos os modelos. Mesma tomada,
+mesmas hesitações, mesmo ruído: é a comparação justa.
 
 | | Motor | Modelo | WER | CER | RTF | Tamanho |
 |---|---|---|---|---|---|---|
-| | **faster-whisper** | small / int8 | **17,6%** | **10,1%** | 0,65 | 464 MB |
-| | faster-whisper | base / int8 | 28,3% | 14,7% | 0,21 | 145 MB |
-| | faster-whisper | tiny / int8 | 31,7% | 15,2% | **0,12** | 75 MB |
-| `[PT]` | wav2vec2 XLSR | large-pt | 32,6% | 16,6% | 0,24 | 1,2 GB |
-| `[PT]` | Vosk | small-pt-0.3 | 33,1% | 26,0% | 0,42 | 50 MB |
+| | **faster-whisper** | **small / int8** | **9,0%** | **6,4%** | 0,43 | 464 MB |
+| | faster-whisper | base / int8 | 24,7% | 7,6% | 0,14 | 145 MB |
+| `[PT]` | wav2vec2 XLSR | large-pt | 29,4% | 16,0% | 0,18 | 1,2 GB |
+| `[PT]` | Vosk | small-pt-0.3 | 37,2% | 33,0% | 0,37 | 50 MB |
+| | faster-whisper | tiny / int8 | 45,6% | 24,7% | **0,12** | 75 MB |
 
-**A curva do Whisper é clara:** cada degrau compra acerto e custa tempo. `small`
-erra metade do que `tiny` e leva 5x mais.
+**O `small` ganha, e ganha limpo.** Mas o número agregado esconde o que importa:
+**todo o erro dele está nas duas frases que menos parecem um comando.**
 
-**wav2vec2 é o especialista interessante.** O WER parece ruim, mas olhe o CER:
-16,6% contra 26,0% do Vosk com WER quase igual. Ele erra *fonemas*, não frases —
-"acordar" virou "acudar", "três graus" virou "têis galos". Nunca inventa uma
-frase fluente que não foi dita, porque não tem decoder de linguagem tentando
-adivinhar a próxima palavra. Para um roteador que casa regex e embeddings, errar
-uma letra é bem menos grave que o Whisper alucinar uma frase inteira e plausível.
+| Frase | small |
+|---|---|
+| `curta` "Timer de dez minutos" | 0% |
+| `pergunta` "acender a luz do quarto e baixar o volume" | 0% |
+| `estrangeirismo` "playlist Discover Weekly no Spotify" | 0% |
+| `acentos` "o avô do José põe açúcar" | 0% |
+| `hora` "quinze para as sete" | 11,1% (comeu o "as") |
+| `numeros` CEP e moeda | 25% |
+| `longa` previsão do tempo | 26,7% |
 
-E é **2,7x mais rápido que o Whisper small** com precisão de caractere parecida.
+Nas cinco frases que se parecem com o que você vai falar com o aparelho, o
+`small` dá **2,2% de WER**. O `base`, nas mesmas cinco, dá 18,9% — erra
+"Timer" ("Time-er"), erra "Toca" ("Taca"). Para um roteador que casa regex,
+isso é a diferença entre acertar e não acionar.
 
-> Rodou sem modelo de linguagem: o `kenlm` não está instalado, então caiu para
-> CTC puro. Com o decoder de LM esse número melhora bastante. Compilar kenlm no
-> Windows é briga; vale tentar direto na Pi, onde é mais fácil.
+**wav2vec2 confirmou o padrão previsto:** erra fonema, nunca frase. "Timer"
+virou "taimer", "põe" virou "poeha" — sempre reconhecível, nunca inventado. E
+o CER (16,0%) é metade do Vosk (33,0%) com WER parecido. Continua rodando sem
+modelo de linguagem (`kenlm` não instala no Windows); com ele o número melhora.
 
-**Vosk perde nos dois eixos** — erra mais que o `base` e é o dobro mais lento.
-E erra perigoso: "acender a luz do **quarto**" virou "luz do **quadro**". O
-modelo pt dele é de 2020 e mostra a idade. Continua na lista por um motivo só:
-é o único nativamente streaming, que é o que um aparelho com wake word quer.
+**Vosk piorou na voz real** — 37,2% de WER, 33,0% de CER. Está fora.
 
-### ⚠️ Estes números estão contaminados
+**tiny está fora também:** 45,6% na voz real contra 31,7% no áudio sintético. É
+o modelo que mais sofre com voz humana, exatamente o oposto do que se quer.
 
-O **mesmo** `faster-whisper small` deu **4,1% de WER no áudio do edge-tts** e
-**17,6% no áudio do Piper**. O modelo não mudou — o material mudou. A voz do
-Piper articula pior, e o STT come sílabas: "Timer" virou "Tame", "quarto" virou
-"4".
+### A tensão que sobra
 
-Esta tabela mede tanto a dicção do Piper quanto o ouvido de cada modelo. Serve
-para ranquear os modelos entre si e como aviso de que o TTS local custa
-inteligibilidade. **Não serve para escolher o STT.**
+`small` acerta, mas RTF 0,43 no PC vira algo entre 1,3 e 2,2 na Pi 5 — acima do
+tempo real, fora dos 200–500 ms da seção 11. `base` cabe com folga (RTF 0,14),
+mas erra os comandos.
 
-O número que decide sai daqui:
+Três saídas, em ordem de preferência:
+
+1. **whisper.cpp ou sherpa-onnx** com o mesmo `small`. São muito mais rápidos
+   que o faster-whisper em ARM — é provável que isso resolva sozinho.
+2. **`base` na Pi só para o roteador, `small` no gateway para o LLM.** Responde
+   a pergunta que a decisão [D1](../docs/decisions.md) deixou em aberto: o nível
+   0 só precisa casar "põe um timer", e para isso o `base` basta; a pergunta que
+   vai para o LLM sobe como áudio e é transcrita direito no servidor.
+3. **Aceitar o `small` na Pi** e gastar a latência, se as duas primeiras falharem.
+
+Nenhuma decide sem medir na Pi. Mas já dá para comprar o hardware sabendo que o
+software funciona.
+
+---
+
+## STT — áudio sintético (só para referência)
+
+Ranqueia modelos entre si de forma barata, mas **não escolhe o vencedor**: o
+mesmo `small` deu 4,1% no áudio do edge-tts, 17,6% no do Piper e 9,0% na sua
+voz. Mede tanto a dicção do TTS quanto o ouvido do modelo.
+
+| Motor | Modelo | WER (Piper) | CER | RTF |
+|---|---|---|---|---|
+| faster-whisper | small | 17,6% | 10,1% | 0,65 |
+| faster-whisper | base | 28,3% | 14,7% | 0,21 |
+| faster-whisper | tiny | 31,7% | 15,2% | 0,12 |
+| wav2vec2 | large-pt | 32,6% | 16,6% | 0,24 |
+| Vosk | small-pt | 33,1% | 26,0% | 0,42 |
+
+Repetir sobre a sua voz:
 
 ```powershell
-.\.venv\Scripts\python.exe -m lab.run_stt --engine faster-whisper --size tiny,base,small --record
-.\.venv\Scripts\python.exe -m lab.run_stt --engine wav2vec2 --size large --record
+.\.venv\Scripts\python.exe -m lab.run_stt --engine faster-whisper --size tiny,base,small --source voice
+.\.venv\Scripts\python.exe -m lab.run_stt --engine wav2vec2 --size large --source voice
 ```
+
+`--source voice` pontua as gravações já feitas, sem regravar.
 
 ---
 
 ## Fila de testes
 
-1. ~~Piper~~ · ~~MMS~~ · ~~faster-whisper tiny/base/small~~ · ~~wav2vec2 pt~~ · ~~Vosk~~
-2. **Gravar sua voz** e refazer a varredura de STT — é o que decide
-3. Ouvir Piper × MMS lado a lado e escolher a voz
-4. wav2vec2 com decoder kenlm, direto na Pi
-5. whisper.cpp / sherpa-onnx — melhores em ARM que o faster-whisper
+1. ~~Piper~~ · ~~MMS~~ · ~~whisper tiny/base/small~~ · ~~wav2vec2 pt~~ · ~~Vosk~~
+2. ~~Gravar a voz real e refazer a varredura de STT~~ — **feito, o `small` ganhou**
+3. **Ouvir Piper × MMS e escolher a voz** — a única escolha ainda em aberto
+4. whisper.cpp / sherpa-onnx com o `small`: se forem rápidos o bastante em ARM,
+   resolvem a tensão da seção acima sem concessão de qualidade
+5. wav2vec2 com decoder kenlm, direto na Pi
 6. Medir o vencedor com streaming, cronometrando o primeiro chunk

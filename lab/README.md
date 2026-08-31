@@ -48,6 +48,9 @@ py -m lab.run_stt --engine faster-whisper --size tiny --source edge
 # 3. o teste que vale: sua voz, seu microfone, seu quarto
 #    (escolha o microfone antes com: py -m lab.devices)
 py -m lab.run_stt --engine faster-whisper --size small --record
+
+# 4. repontuar as gravacoes ja feitas, sem regravar
+py -m lab.run_stt --engine wav2vec2 --size large --source voice
 ```
 
 ## Escolher microfone e alto-falante

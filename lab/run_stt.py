@@ -30,14 +30,24 @@ Item = tuple[str, Path, str]
 
 
 def available_sources() -> list[str]:
+    """Every folder holding a recorded take: your voice, plus each TTS engine."""
+    found = ["voice"] if (OUT / "voice").exists() else []
     directory = OUT / "tts"
-    return sorted(p.name for p in directory.iterdir() if p.is_dir()) if directory.exists() else []
+    if directory.exists():
+        found += sorted(p.name for p in directory.iterdir() if p.is_dir())
+    return found
 
 
-def collect_from_tts(source: str, keys: list[str]) -> list[Item]:
-    directory = OUT / "tts" / source
+def collect(source: str, keys: list[str]) -> list[Item]:
+    """Load a saved take. ``voice`` is your own recording; the rest are TTS output.
+
+    Re-scoring saved audio instead of recording again is what makes comparing
+    engines honest -- every model must be judged on the same take, including the
+    same hesitations and the same background noise.
+    """
+    directory = OUT / "voice" if source == "voice" else OUT / "tts" / source
     if not directory.exists():
-        options = "\n  ".join(available_sources()) or "(nenhuma -- rode lab.run_tts primeiro)"
+        options = "\n  ".join(available_sources()) or "(nenhuma -- grave com --record)"
         raise SystemExit(f"nao encontrei {directory}\n\nfontes disponiveis:\n  {options}")
     return [
         (key, directory / f"{key}.wav", PHRASES[key])
@@ -113,7 +123,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="STT bench")
     parser.add_argument("--engine", required=True, choices=sorted(ENGINES))
     parser.add_argument("--size", help="model size(s), comma separated")
-    parser.add_argument("--source", default="piper_faber_medium", help="folder under lab/out/tts")
+    parser.add_argument(
+        "--source",
+        default="voice",
+        help="saved take to score: voice (your recording) or a TTS engine folder",
+    )
     parser.add_argument("--record", action="store_true", help="use your microphone instead")
     parser.add_argument("--phrase", default="all", help=f"{'|'.join(PHRASES)}|all")
     parser.add_argument(
@@ -135,7 +149,7 @@ def main() -> None:
         print(f"\nmicrofone: {describe(microphone)}")
         items = collect_from_mic(keys, args.seconds, microphone)
     else:
-        items = collect_from_tts(args.source, keys)
+        items = collect(args.source, keys)
     if not items:
         raise SystemExit("nenhum audio para transcrever")
 
