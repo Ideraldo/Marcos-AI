@@ -1,7 +1,10 @@
 # lab — bancada de testes de STT e TTS
 
 Não roda em produção. É onde os motores são medidos antes de virarem uma
-implementação em `gateway/stt/` ou `gateway/tts/`.
+implementação de verdade. Pela decisão [D1](../docs/decisions.md), o vencedor de
+cada lado vai morar no `device/`, não no `gateway/`: o roteador de intenções
+precisa de texto para classificar, então o STT tem que existir na Pi para o
+nível 0 funcionar com a internet caída.
 
 O plano deixa STT e TTS em aberto ("API de nuvem, trocável por faster-whisper";
 "Piper ou TTS de nuvem"). Esta pasta existe para fechar essas duas escolhas com

@@ -2,6 +2,11 @@
 
 **Plano final.** Documento de especificação, escrito para ser lido inteiro no início do desenvolvimento. Substitui as versões 1 e 2.
 
+> Este documento registra o que se sabia quando foi escrito e **não é reescrito**.
+> As decisões que divergiram dele durante a construção estão em
+> [decisions.md](decisions.md) — notadamente **D1**, que move STT e TTS do
+> gateway para o dispositivo.
+
 ---
 
 ## 0. Resumo executivo

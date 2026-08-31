@@ -1,7 +1,9 @@
-# BMO — portable voice assistant
+# Marcos-AI — portable voice assistant
 
-Client-server voice assistant. See `docs/ultraplan-v3-assistente-voz-portatil.md`
-for the full specification.
+Client-server voice assistant, built to replace a bedroom Alexa without giving
+up portability. Full specification in
+`docs/ultraplan-v3-assistente-voz-portatil.md`; where the build has since
+diverged from it, `docs/decisions.md` says so and why.
 
 ## Layout
 
@@ -15,38 +17,61 @@ device/      runs on the PC now, on a Pi 5 later
   ws_client.py   the single connection to the gateway
   state.py       state machine
 gateway/     runs in Docker on localhost now, on a VPS later
-  api/           WebSocket, token auth
+  api/           WebSocket, token auth, the turn loop
   stt/ llm/ tts/ interface + swappable implementations
   tools/         spotify, home_assistant, web_search
   conversation/  history and context assembly
-common/      shared message schemas
+common/      shared message schemas -- the contract, never logic
+lab/         bench for picking the STT and TTS engines (not production)
+docs/        the plan, the structure guide, the decision log
 ```
 
 Two non-negotiables from the plan: **two separate processes from the first
 commit**, and **alarms/timers always execute on the device**.
 
-## Phase 0
+## Setup
+
+```powershell
+Copy-Item .env.example .env
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Every command below assumes the project root as the working directory.
+
+## Phase 0 — the loop, end to end
 
 Goal: mic -> STT -> LLM -> TTS round trip, two processes, WebSocket on localhost.
 Accepted when 10 consecutive turns transcribe reliably in pt-BR.
 
-What runs today: the full two-process loop in **text mode**. You type instead of
-speaking; the line is sent over the same binary channel that will carry PCM, so
-everything past the microphone is the real path. The LLM is real (Ollama,
-locally); STT and TTS are stubs behind their interfaces.
+**Working today** in text mode: you type instead of speaking, and the line is
+sent over the same binary channel that will carry PCM, so everything past the
+microphone is the real path -- state machine, wire protocol, simulated link
+delay. The LLM is real (Ollama, local); STT and TTS are stubs behind their
+interfaces while `lab/` decides who replaces them.
 
-```bash
-cp .env.example .env
-python -m venv .venv && .venv/Scripts/activate   # Windows
-pip install -r requirements.txt
-
-ollama serve                         # terminal 1 (or the Ollama app)
-uvicorn gateway.main:app --reload    # terminal 2
-python -m device.main                # terminal 3
+```powershell
+ollama serve                                            # or the Ollama app
+.\.venv\Scripts\python.exe -m uvicorn gateway.main:app  # terminal 2
+.\.venv\Scripts\python.exe -m device.main               # terminal 3
 ```
 
 Swapping the LLM later touches one function, `build_llm` in `gateway/main.py`.
 
-```bash
-pytest
+```powershell
+.\.venv\Scripts\python.exe -m pytest
 ```
+
+## Choosing STT and TTS
+
+`lab/` is where engines are measured before becoming an implementation under
+`gateway/` or `device/`. It ranks them on the same pt-BR phrase set, reports
+RTF and WER/CER, and flags which models are Portuguese specialists.
+
+```powershell
+.\.venv\Scripts\python.exe -m lab.list                              # what is on the bench
+.\.venv\Scripts\python.exe -m lab.run_tts --engine piper --play     # hear it
+.\.venv\Scripts\python.exe -m lab.run_stt --engine faster-whisper --size tiny,base,small --record
+```
+
+Current standings and the open questions live in `lab/RESULTS.md`.

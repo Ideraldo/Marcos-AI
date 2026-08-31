@@ -6,6 +6,9 @@ colocar código novo. O plano define o *quê*; este arquivo define o *onde*.
 
 Nomes de pastas e código são em inglês; a documentação é em português.
 
+Onde a construção divergiu do plano, o motivo está em [decisions.md](decisions.md)
+— vale ler antes deste arquivo, porque a decisão D1 muda onde STT e TTS moram.
+
 ---
 
 ## 1. A divisão de topo: por processo, não por camada técnica
@@ -19,6 +22,7 @@ WebSocket. A estrutura reflete isso literalmente:
 | `device/` | O aparelho | processo no PC (mic + alto-falante) | Raspberry Pi 5 |
 | `gateway/` | O servidor | Docker no localhost | VPS em São Paulo |
 | `common/` | O contrato entre os dois | importado pelos dois | idem |
+| `lab/` | A bancada de avaliação | só no PC | não vai para lugar nenhum |
 
 A linha entre `device/` e `gateway/` é uma **fronteira de rede**. Um
 `from gateway.llm import ...` dentro de `device/` quebra a regra 1 da seção 2 —
@@ -108,22 +112,62 @@ conta que a escolha do modelo, mora aqui.
 
 ---
 
-## 5. `tests/` e `scripts/`
+## 5. `tests/`, `scripts/` e `lab/`
 
-Estas duas **não estão na seção 3 do plano**; foram acrescentadas na criação da
-estrutura.
+Estas três **não estão na seção 3 do plano**; foram acrescentadas durante a
+construção.
 
 - **`tests/`** — a seção 10 é escrita inteira em critérios de aceite, e boa
-  parte deles é testável. Hoje contém só o teste da máquina de estados.
+  parte deles é testável. Hoje cobre a máquina de estados, o contrato de
+  mensagens de `common/`, a montagem de histórico do gateway e a pontuação
+  do `lab/`.
 - **`scripts/`** — utilitários que não rodam em produção: medir latência,
   pré-gerar o cache de TTS (regra 2 da seção 5), gravar as 150–200 amostras de
   voz do wake word. **Está vazia por enquanto.**
+- **`lab/`** — a bancada onde os motores de STT e TTS são medidos antes de
+  virarem implementação. Ver adiante.
 
 ---
 
-## 6. Onde colocar um arquivo novo
+## 6. `lab/` — escolher um motor com número, não com opinião
+
+O plano deixa STT e TTS em aberto ("API de nuvem, trocável por faster-whisper";
+"Piper ou TTS de nuvem"). `lab/` existe para fechar essas escolhas.
+
+```
+lab/
+  phrases.py     as frases pt-BR de teste — a constante de toda comparação
+  registry.py    quais motores existem, com a flag [PT] de especialista
+  list.py        python -m lab.list
+  run_tts.py     sintetiza o conjunto e mede tempo e RTF
+  run_stt.py     transcreve e pontua com WER/CER
+  tts/  stt/     um arquivo por motor candidato
+  metrics.py     normalização + WER/CER
+  numbers.py     soletra dígitos: "10" e "dez" precisam pontuar igual
+  audio.py       wav, playback, gravação de microfone
+  out/  models/  áudio gerado e modelos baixados (fora do git)
+  RESULTS.md     o veredito, com a avaliação subjetiva
+```
+
+Os `Protocol` em `lab/tts/base.py` e `lab/stt/base.py` espelham de propósito os
+de `gateway/`: o vencedor migra como implementação, sem reescrita.
+
+`lab/` **não roda em produção** e pode importar o que quiser dos dois lados —
+é a única pasta com essa liberdade, porque não existe nem na Pi nem na VPS.
+Detalhes de uso em `lab/README.md`.
+
+---
+
+## 7. Onde colocar um arquivo novo
 
 1. Precisa existir na Pi? → `device/`
 2. Só no servidor? → `gateway/`
 3. As duas pontas precisam concordar sobre isso? → `common/`
-4. Não roda em produção? → `scripts/` ou `tests/`
+4. É um motor sendo avaliado, ou a medição dele? → `lab/`
+5. Não roda em produção? → `scripts/` ou `tests/`
+
+E uma decisão que contraria o plano? → registre em [`decisions.md`](decisions.md)
+antes de escrever o código. A decisão **D1** já move STT e TTS do gateway para o
+dispositivo, então a leitura da seção 4 acima muda: `gateway/stt/` e
+`gateway/tts/` continuam existindo como interface, mas a implementação que
+importa passou a viver no lado do device.
