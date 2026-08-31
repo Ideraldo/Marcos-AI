@@ -1,0 +1,9 @@
+# gateway
+fastapi
+uvicorn[standard]
+websockets
+httpx
+
+# device
+sounddevice
+webrtcvad

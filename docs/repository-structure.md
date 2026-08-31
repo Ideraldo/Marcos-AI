@@ -1,0 +1,129 @@
+# Estrutura do repositório
+
+Documento complementar ao [ultraplan v3](ultraplan-v3-assistente-voz-portatil.md).
+Explica **onde cada parte do sistema se encaixa** e o critério para decidir onde
+colocar código novo. O plano define o *quê*; este arquivo define o *onde*.
+
+Nomes de pastas e código são em inglês; a documentação é em português.
+
+---
+
+## 1. A divisão de topo: por processo, não por camada técnica
+
+A seção 14 do plano fixa duas coisas como inegociáveis. A primeira é **dois
+processos separados desde o primeiro commit**, conversando exclusivamente por
+WebSocket. A estrutura reflete isso literalmente:
+
+| Pasta | O que é | Onde roda hoje | Onde roda depois |
+|---|---|---|---|
+| `device/` | O aparelho | processo no PC (mic + alto-falante) | Raspberry Pi 5 |
+| `gateway/` | O servidor | Docker no localhost | VPS em São Paulo |
+| `common/` | O contrato entre os dois | importado pelos dois | idem |
+
+A linha entre `device/` e `gateway/` é uma **fronteira de rede**. Um
+`from gateway.llm import ...` dentro de `device/` quebra a regra 1 da seção 2 —
+na Pi esse import não existiria. A checagem mental é sempre a mesma:
+*isso vai existir na Pi, ou só no servidor?*
+
+Para decidir onde colocar processamento novo, vale a regra 4 da seção 2:
+**na dúvida, empurre para o `gateway/`**. O PC de desenvolvimento é muito mais
+rápido que a Pi, e o que couber no servidor não vira problema de hardware.
+
+---
+
+## 2. `common/` — só o contrato
+
+As duas pontas precisam concordar sobre o formato das mensagens, e essa é a
+única coisa que podem compartilhar.
+
+```
+common/
+  messages.py        dataclasses do protocolo da seção 4 + formato de áudio
+  serialization.py   encode/decode JSON das mensagens de controle
+```
+
+Se cada lado definisse a sua versão, um dia o gateway manda `audio_end` e o
+device ainda espera `end_audio` — e isso aparece na Pi, não no PC.
+
+`common/` é pequeno de propósito: **contrato, nunca lógica**. Se algo aqui só
+interessa a um dos lados, está no lugar errado.
+
+---
+
+## 3. `device/` — organizado pela máquina de estados
+
+```
+device/
+  activation/   o que ACORDA o aparelho: wake word, botão GPIO,
+                detecção de energia (seção 7)
+  audio/        captura, playback, VAD, escolha de device de I/O
+  router/       roteador de intenções (seção 5): decide se resolve
+                aqui ou manda para o gateway
+  local/        timers, alarmes, lembretes — SQLite + agendador
+  face/         o rosto: HTML/CSS/JS servido localmente
+  state.py      IDLE → LISTENING → THINKING → SPEAKING
+  ws_client.py  a ÚNICA conexão com o mundo externo
+  config.py     áudio e display por variável de ambiente
+  main.py       entrypoint do processo
+```
+
+O fluxo lê de cima para baixo: `activation/` dispara → `audio/` captura →
+`router/` decide → ou `local/` executa, ou `ws_client.py` manda para o gateway.
+`face/` reflete `state.py` o tempo todo.
+
+**Por que `local/` é separado de `router/`:** o roteador só *classifica*; quem
+*executa* é `local/`. E a execução local acontece venha a ordem de onde vier,
+inclusive de um `tool_call` devolvido pelo gateway — a segunda regra
+inegociável da seção 14. É isso que faz o despertador tocar com a internet caída.
+
+`face/` não tem `__init__.py`: não é pacote Python, é uma app web servida para
+o Chromium.
+
+---
+
+## 4. `gateway/` — camadas trocáveis atrás de interfaces
+
+```
+gateway/
+  api/             WebSocket + autenticação por token
+  stt/             base.py (Protocol) + implementações
+  llm/             base.py (Protocol ProvedorLLM) + implementações
+  tts/             base.py (Protocol) + cache de frases fixas
+  tools/           spotify, home_assistant, web_search
+  conversation/    histórico e montagem de contexto
+  config.py        segredos e parâmetros — nunca saem do servidor
+  main.py          entrypoint (uvicorn)
+  Dockerfile
+  docker-compose.yml
+```
+
+`stt/`, `llm/` e `tts/` seguem o mesmo padrão: `base.py` define a interface, os
+arquivos vizinhos são implementações intercambiáveis, e **nada fora do módulo
+sabe qual está ativa**. É isso que permite trocar STT de nuvem por
+faster-whisper, ou a API do LLM por Ollama, sem tocar em `api/`.
+
+`conversation/` é separado de `llm/` porque histórico e montagem de prompt não
+mudam quando o provedor muda — e o cache de prefixo da seção 6, que pesa mais na
+conta que a escolha do modelo, mora aqui.
+
+---
+
+## 5. `tests/` e `scripts/`
+
+Estas duas **não estão na seção 3 do plano**; foram acrescentadas na criação da
+estrutura.
+
+- **`tests/`** — a seção 10 é escrita inteira em critérios de aceite, e boa
+  parte deles é testável. Hoje contém só o teste da máquina de estados.
+- **`scripts/`** — utilitários que não rodam em produção: medir latência,
+  pré-gerar o cache de TTS (regra 2 da seção 5), gravar as 150–200 amostras de
+  voz do wake word. **Está vazia por enquanto.**
+
+---
+
+## 6. Onde colocar um arquivo novo
+
+1. Precisa existir na Pi? → `device/`
+2. Só no servidor? → `gateway/`
+3. As duas pontas precisam concordar sobre isso? → `common/`
+4. Não roda em produção? → `scripts/` ou `tests/`
