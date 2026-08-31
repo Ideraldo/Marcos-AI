@@ -16,6 +16,7 @@ quality.
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -31,12 +32,28 @@ ESPEAK_VOICE = "pt-br"
 
 
 def base_files(base: str) -> tuple[Path, Path]:
-    checkpoint = CHECKPOINTS / f"{base}.ckpt"
+    """The prepared checkpoint and the voice config to fine-tune from.
+
+    The published checkpoint is never used directly: it carries Linux paths that
+    Windows cannot unpickle and an epoch counter that would end training before
+    it began. ``lab.finetune.prepare`` fixes both, and runs here automatically
+    the first time.
+    """
+    from lab.finetune.monotonic_align import install
+    from lab.finetune.prepare import prepare
+
+    # The Windows wheel ships this package without its compiled extension.
+    if install():
+        print("  instalado o monotonic_align que faltava na wheel do Windows")
+
     config = VOICES / f"{base}.onnx.json"
-    if not checkpoint.exists():
-        raise SystemExit(f"checkpoint nao encontrado: {checkpoint}")
     if not config.exists():
         raise SystemExit(f"config nao encontrada: {config}")
+
+    checkpoint = CHECKPOINTS / f"{base}-finetune.ckpt"
+    if not checkpoint.exists():
+        print(f"  preparando o checkpoint base ({base})...")
+        checkpoint = prepare(base)
     return checkpoint, config
 
 
@@ -83,7 +100,7 @@ def latest_run_checkpoint(run: Path) -> Path:
     return found[-1]
 
 
-def export(name: str) -> None:
+def export(name: str, base: str) -> None:
     run = OUTPUT / name
     checkpoint = latest_run_checkpoint(run)
     destination = VOICES / f"pt_BR-{name}-medium.onnx"
@@ -94,7 +111,18 @@ def export(name: str) -> None:
          "--checkpoint", str(checkpoint), "--output-file", str(destination)],
         check=True,
     )
-    print(f"\n  pronto. ouca com:")
+
+    # The exporter writes only the .onnx, but PiperVoice.load refuses to run
+    # without the sidecar config next to it. The phoneme table and sample rate
+    # come from the base voice and are unchanged by fine-tuning, so copying it
+    # is correct -- only the speaker's name needs updating.
+    config = json.loads((VOICES / f"{base}.onnx.json").read_text(encoding="utf-8"))
+    config.setdefault("dataset", name)
+    (VOICES / f"pt_BR-{name}-medium.onnx.json").write_text(
+        json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    print("\n  pronto. ouca com:")
     print(f"    python -m lab.run_tts --engine piper --voice pt_BR-{name}-medium --play")
 
 
@@ -109,7 +137,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.export:
-        export(args.name)
+        export(args.name, args.base)
     else:
         train(args.base, args.name, args.epochs, args.batch_size, args.resume)
 

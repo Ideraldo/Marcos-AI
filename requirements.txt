@@ -30,3 +30,4 @@ soundfile
 kokoro
 speechbrain
 piper-tts[train]   # extras de treino: lightning etc (fine-tune de voz)
+numba              # monotonic align: a wheel do piper no Windows vem sem a extensao

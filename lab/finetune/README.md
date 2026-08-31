@@ -70,6 +70,50 @@ sobreviveram depois que o repositório oficial saiu do ar.
 Na RTX 2060 (6 GB), `--batch-size 8` com precisão 16-mixed. Se faltar VRAM,
 `--batch-size 4` — custa tempo, não qualidade.
 
+### Quanto demora
+
+Medido nesta máquina com as 203 gravações: **22 batches por época, ~15 s cada**.
+
+| Épocas | Tempo | O que esperar |
+|---|---|---|
+| 300 | ~1h15 | já dá para ouvir para onde o timbre está indo |
+| 1000 | ~4h | normalmente já convincente |
+| 2000 | ~8h | o padrão do comando; rode dormindo |
+
+Dá para interromper com Ctrl+C e continuar com `--resume` sem perder nada.
+Também dá para exportar um checkpoint intermediário e ouvir antes de decidir se
+vale continuar.
+
+### O que o preparo do checkpoint resolve
+
+Rodar `train` chama `lab.finetune.prepare` sozinho na primeira vez. Ele existe
+porque três coisas separam um checkpoint publicado de um fine-tune que roda:
+
+- **PosixPath** — foram salvos no Linux e guardam objetos `pathlib` dentro. O
+  Windows não consegue nem abrir o arquivo.
+- **weights_only** — o torch 2.6 passou a recusar checkpoints com objetos, e é
+  assim que o Lightning carrega.
+- **O contador de época** — essa é a que custaria uma tarde. `--ckpt_path`
+  significa *retomar*, então ele restaura a época também: o checkpoint do dii
+  parou na época 3908, e pedir 2000 faria o treino encerrar na hora sem fazer
+  nada. Zerar o contador é o que transforma "retomar o treino dos outros" em
+  "começar o meu a partir dos pesos deles".
+
+O estado do otimizador é descartado pelo mesmo motivo: pertence ao treino deles,
+com a voz deles, e carregá-lo adiante atrapalha a voz nova em vez de ajudar.
+
+### O monotonic_align que falta na wheel
+
+A wheel do `piper-tts[train]` para Windows vem sem a extensão Cython do
+Monotonic Alignment Search — nem o `.pyx` está lá, então não dá nem para
+compilar. O treino morreria no primeiro batch.
+
+`lab/finetune/monotonic_align.py` reimplementa esse algoritmo com numba e se
+instala sozinho quando o treino começa. É a busca em programação dinâmica no
+coração do VITS: dado o custo de alinhar cada posição do texto com cada quadro
+de áudio, achar o único caminho monotônico de custo mínimo — que é como o modelo
+aprende, sem nenhum alinhamento rotulado, quanto tempo dura cada fonema.
+
 ## 3. Exportar e ouvir
 
 ```powershell
@@ -77,8 +121,14 @@ py -m lab.finetune.train --export --name ideraldo
 py -m lab.run_tts --engine piper --voice pt_BR-ideraldo-medium --play
 ```
 
-O `.onnx` cai direto em `lab/models/piper/`, então entra na bancada como
-qualquer outra voz e pode ser comparado com as demais nas mesmas frases.
+O `.onnx` cai direto em `lab/models/piper/`, junto com o `.onnx.json` copiado da
+voz base — o exportador do Piper só escreve o `.onnx`, e sem o config ao lado o
+modelo nem carrega. Entra na bancada como qualquer outra voz e pode ser
+comparado com as demais nas mesmas frases.
+
+**Todo esse caminho já foi testado ponta a ponta** com uma época de treino: o
+checkpoint preparado carrega, o treino roda na GPU, o export sai e a voz
+resultante sintetiza a RTF 0,06.
 
 ---
 
