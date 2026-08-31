@@ -69,6 +69,7 @@ Swapping the LLM later touches one function, `build_llm` in `gateway/main.py`.
 RTF and WER/CER, and flags which models are Portuguese specialists.
 
 ```powershell
+.\.venv\Scripts\python.exe -m lab.devices                           # pick mic and speaker
 .\.venv\Scripts\python.exe -m lab.list                              # what is on the bench
 .\.venv\Scripts\python.exe -m lab.run_tts --engine piper --play     # hear it
 .\.venv\Scripts\python.exe -m lab.run_stt --engine faster-whisper --size tiny,base,small --record

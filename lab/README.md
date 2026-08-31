@@ -20,7 +20,8 @@ lab/
   list.py        python -m lab.list -- mostra a bancada inteira
   metrics.py     normalização + WER/CER
   numbers.py     "10" e "dez" precisam pontuar igual
-  audio.py       wav, playback, gravação de microfone
+  devices.py     escolha de microfone e alto-falante, guardada em .devices.json
+  audio.py       wav, playback, gravação com fim de fala automático (VAD)
   out/           áudio gerado (fora do git)
   models/        modelos baixados (fora do git)
   RESULTS.md     o veredito — preencha depois de ouvir
@@ -45,8 +46,46 @@ py -m lab.run_stt --engine faster-whisper --size small --source edge
 py -m lab.run_stt --engine faster-whisper --size tiny --source edge
 
 # 3. o teste que vale: sua voz, seu microfone, seu quarto
+#    (escolha o microfone antes com: py -m lab.devices)
 py -m lab.run_stt --engine faster-whisper --size small --record
 ```
+
+## Escolher microfone e alto-falante
+
+O dispositivo padrão do Windows raramente é o que você quer — se for um headset
+desligado, a gravação sai muda e parece que o modelo é que falhou. Escolha uma
+vez e fica guardado em `lab/.devices.json`:
+
+```powershell
+py -m lab.devices
+```
+
+Ele lista os dispositivos, salva a escolha e faz um teste de 3 segundos dizendo
+se o microfone está mudo, saturado ou ok.
+
+Depois disso todo runner usa o que foi salvo. Para desviar pontualmente:
+
+```powershell
+py -m lab.run_stt --engine faster-whisper --record --mic fifine   # por nome
+py -m lab.run_stt --engine faster-whisper --record --mic 2        # por índice
+py -m lab.run_stt --engine faster-whisper --record --pick         # escolher agora
+py -m lab.run_tts --engine piper --play --speaker "Fone"
+```
+
+## Gravação que para sozinha
+
+Por padrão a gravação termina quando você para de falar — 900 ms de silêncio
+encerram a frase. Duração fixa erra nos dois sentidos: corta a frase longa e
+enche a curta de ruído de sala, e é justamente esse ruído que faz o modelo
+alucinar palavras que ninguém disse.
+
+Usa o `webrtcvad`, o mesmo que vai rodar na Pi, com um portão de energia por
+cima: os primeiros 300 ms medem o ruído de fundo e um quadro só conta como fala
+se o VAD concordar **e** o som estiver acima desse piso. Sem isso, um condensador
+sensível como o Fifine faz o VAD tratar o ruído da sala como voz e a gravação
+nunca começa.
+
+Se quiser o comportamento antigo, `--seconds 8` volta a gravar por tempo fixo.
 
 ## Como ler os números
 

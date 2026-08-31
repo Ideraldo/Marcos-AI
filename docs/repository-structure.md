@@ -138,6 +138,7 @@ O plano deixa STT e TTS em aberto ("API de nuvem, trocável por faster-whisper";
 lab/
   phrases.py     as frases pt-BR de teste — a constante de toda comparação
   registry.py    quais motores existem, com a flag [PT] de especialista
+  devices.py     escolha de microfone e alto-falante
   list.py        python -m lab.list
   run_tts.py     sintetiza o conjunto e mede tempo e RTF
   run_stt.py     transcreve e pontua com WER/CER

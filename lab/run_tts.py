@@ -17,6 +17,7 @@ from pathlib import Path
 
 from common.messages import SAMPLE_RATE
 from lab.audio import play, resample, write_wav
+from lab.devices import describe, ensure
 from lab.phrases import PHRASES, WARMUP
 from lab.tts import ENGINES
 
@@ -33,6 +34,8 @@ def main() -> None:
     parser.add_argument("--voice", help="engine-specific voice/model id")
     parser.add_argument("--phrase", default="all", help=f"{'|'.join(PHRASES)}|all")
     parser.add_argument("--play", action="store_true", help="play each result")
+    parser.add_argument("--speaker", help="output device: index or part of the name")
+    parser.add_argument("--pick", action="store_true", help="choose the speaker interactively")
     parser.add_argument(
         "--keep-rate",
         action="store_true",
@@ -42,6 +45,11 @@ def main() -> None:
 
     entry = ENGINES[args.engine]
     engine = entry.factory(args.voice)
+
+    speaker = None
+    if args.play:
+        speaker = ensure("output", args.speaker, ask=args.pick)
+        print(f"\nalto-falante: {describe(speaker)}")
     keys = list(PHRASES) if args.phrase == "all" else [args.phrase]
 
     # Load the model on a throwaway phrase. Otherwise the first row carries the
@@ -78,7 +86,7 @@ def main() -> None:
         print(f"{key:<16} {elapsed:>8.2f}s {seconds:>7.2f}s {elapsed / seconds:>6.2f}  {path}")
         if args.play:
             print(f'   "{text}"')
-            play(path)
+            play(path, device=speaker)
 
     if len(keys) > 1:
         print("-" * 74)

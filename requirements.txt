@@ -8,6 +8,8 @@ httpx
 sounddevice
 numpy
 webrtcvad
+# webrtcvad ainda importa pkg_resources, removido no setuptools 81
+setuptools<81
 
 # shared
 python-dotenv

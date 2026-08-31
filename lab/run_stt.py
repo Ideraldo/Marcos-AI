@@ -17,7 +17,9 @@ import argparse
 import time
 from pathlib import Path
 
-from lab.audio import duration_seconds, record, write_wav
+from common.messages import SAMPLE_RATE
+from lab.audio import duration_seconds, record, record_until_silence, write_wav
+from lab.devices import describe, ensure
 from lab.metrics import cer, wer
 from lab.phrases import PHRASES, WARMUP
 from lab.stt import ENGINES
@@ -44,17 +46,32 @@ def collect_from_tts(source: str, keys: list[str]) -> list[Item]:
     ]
 
 
-def collect_from_mic(keys: list[str], seconds: float) -> list[Item]:
+def collect_from_mic(keys: list[str], seconds: float | None, device: int | None) -> list[Item]:
+    """One take per phrase, stopping on its own when you stop talking."""
+    import numpy as np
+
     items: list[Item] = []
     for key in keys:
         text = PHRASES[key]
         print(f'\n  [{key}] leia em voz alta:\n    "{text}"')
-        input("  ENTER para gravar... ")
-        print(f"  gravando {seconds:.0f}s...", flush=True)
-        pcm = record(seconds)
+        input("  ENTER e pode falar... ")
+
+        if seconds:
+            print(f"  gravando {seconds:.0f}s...", flush=True)
+            pcm = record(seconds, device=device)
+        else:
+            pcm = record_until_silence(device=device)
+            if not pcm:
+                print("  nao ouvi nada -- confira com: python -m lab.devices")
+                continue
+
+        samples = np.frombuffer(pcm, dtype=np.int16)
+        peak = int(np.abs(samples).max()) if len(samples) else 0
         wav = OUT / "voice" / f"{key}.wav"
         write_wav(wav, pcm)
-        print(f"  salvo em {wav}")
+        print(f"  {len(samples) / SAMPLE_RATE:.1f}s, pico {peak / 32768:.0%}  ->  {wav.name}")
+        if peak < 500:
+            print("  SILENCIO -- microfone mudo ou dispositivo errado")
         items.append((key, wav, text))
     return items
 
@@ -99,7 +116,13 @@ def main() -> None:
     parser.add_argument("--source", default="piper_faber_medium", help="folder under lab/out/tts")
     parser.add_argument("--record", action="store_true", help="use your microphone instead")
     parser.add_argument("--phrase", default="all", help=f"{'|'.join(PHRASES)}|all")
-    parser.add_argument("--seconds", type=float, default=8.0, help="recording length")
+    parser.add_argument(
+        "--seconds",
+        type=float,
+        help="fixed recording length; omitted means stop when you stop talking",
+    )
+    parser.add_argument("--mic", help="microphone: index or part of the name (ex: fifine)")
+    parser.add_argument("--pick", action="store_true", help="choose the microphone interactively")
     parser.add_argument("--quiet", action="store_true", help="only the summary line per model")
     args = parser.parse_args()
 
@@ -107,7 +130,12 @@ def main() -> None:
     if WARMUP not in keys:
         keys = [WARMUP, *keys]
 
-    items = collect_from_mic(keys, args.seconds) if args.record else collect_from_tts(args.source, keys)
+    if args.record:
+        microphone = ensure("input", args.mic, ask=args.pick)
+        print(f"\nmicrofone: {describe(microphone)}")
+        items = collect_from_mic(keys, args.seconds, microphone)
+    else:
+        items = collect_from_tts(args.source, keys)
     if not items:
         raise SystemExit("nenhum audio para transcrever")
 
