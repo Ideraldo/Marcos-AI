@@ -30,11 +30,23 @@ commit**, and **alarms/timers always execute on the device**.
 Goal: mic -> STT -> LLM -> TTS round trip, two processes, WebSocket on localhost.
 Accepted when 10 consecutive turns transcribe reliably in pt-BR.
 
+What runs today: the full two-process loop in **text mode**. You type instead of
+speaking; the line is sent over the same binary channel that will carry PCM, so
+everything past the microphone is the real path. The LLM is real (Ollama,
+locally); STT and TTS are stubs behind their interfaces.
+
 ```bash
 cp .env.example .env
 python -m venv .venv && .venv/Scripts/activate   # Windows
 pip install -r requirements.txt
 
-uvicorn gateway.main:app --reload    # terminal 1
-python -m device.main                # terminal 2
+ollama serve                         # terminal 1 (or the Ollama app)
+uvicorn gateway.main:app --reload    # terminal 2
+python -m device.main                # terminal 3
+```
+
+Swapping the LLM later touches one function, `build_llm` in `gateway/main.py`.
+
+```bash
+pytest
 ```

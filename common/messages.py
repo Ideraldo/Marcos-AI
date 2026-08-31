@@ -56,11 +56,17 @@ class StateMessage:
     value: State
     type: Literal["state"] = "state"
 
+    def __post_init__(self) -> None:
+        # Arrives off the wire as a plain string; the rest of the code compares
+        # against the enum, so normalise once, here.
+        self.value = State(self.value)
+
 
 @dataclass
 class Transcript:
     text: str
     final: bool = True
+    role: Literal["user", "assistant"] = "user"
     type: Literal["transcript"] = "transcript"
 
 
@@ -70,3 +76,22 @@ class ToolCall:
     name: str
     args: dict[str, Any] = field(default_factory=dict)
     type: Literal["tool_call"] = "tool_call"
+
+
+@dataclass
+class Error:
+    message: str
+    type: Literal["error"] = "error"
+
+
+#: Every control message, keyed by its wire ``type``. ``serialization.decode``
+#: uses this to rebuild the dataclass, so adding a message means adding it here.
+MESSAGES: dict[str, type] = {
+    "session_start": SessionStart,
+    "audio_end": AudioEnd,
+    "tool_result": ToolResult,
+    "state": StateMessage,
+    "transcript": Transcript,
+    "tool_call": ToolCall,
+    "error": Error,
+}

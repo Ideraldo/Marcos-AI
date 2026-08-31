@@ -6,4 +6,12 @@ httpx
 
 # device
 sounddevice
+numpy
 webrtcvad
+
+# shared
+python-dotenv
+
+# dev
+pytest
+pytest-asyncio
