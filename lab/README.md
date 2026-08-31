@@ -1,0 +1,60 @@
+# lab — bancada de testes de STT e TTS
+
+Não roda em produção. É onde os motores são medidos antes de virarem uma
+implementação em `gateway/stt/` ou `gateway/tts/`.
+
+O plano deixa STT e TTS em aberto ("API de nuvem, trocável por faster-whisper";
+"Piper ou TTS de nuvem"). Esta pasta existe para fechar essas duas escolhas com
+número e com ouvido, não com opinião.
+
+```
+lab/
+  phrases.py     as frases de teste — a constante de toda comparação
+  run_tts.py     sintetiza o conjunto e mede tempo e RTF
+  run_stt.py     transcreve e pontua com WER/CER
+  tts/  stt/     um arquivo por motor candidato
+  metrics.py     normalização + WER/CER
+  numbers.py     "10" e "dez" precisam pontuar igual
+  audio.py       wav, playback, gravação de microfone
+  out/           áudio gerado (fora do git)
+  models/        modelos baixados (fora do git)
+  RESULTS.md     o veredito — preencha depois de ouvir
+```
+
+## Como usar
+
+```bash
+$env:PYTHONPATH = (Get-Location).Path      # PowerShell, uma vez por terminal
+
+# 1. gerar e ouvir
+python -m lab.run_tts --engine edge --play
+python -m lab.run_tts --engine edge --voice pt-BR-AntonioNeural --phrase hora --play
+
+# 2. transcrever o que foi gerado (barato, ranqueia modelos)
+python -m lab.run_stt --engine faster-whisper --size small --source edge
+
+# 3. o teste que vale: sua voz, seu microfone, seu quarto
+python -m lab.run_stt --engine faster-whisper --size small --record
+```
+
+## Como ler os números
+
+**RTF** (real-time factor) = tempo de processamento ÷ duração do áudio.
+Abaixo de 1 significa mais rápido que tempo real. No PC isso é folgado; a
+pergunta que importa é se sobra margem para a Pi 5, que é bem mais lenta.
+
+**WER/CER** = taxa de erro por palavra e por caractere. A normalização ignora
+maiúsculas, acentos, pontuação e a diferença entre `10` e `dez` — nada disso
+muda o que o assistente entende. Um WER que sobra depois disso é erro de
+verdade.
+
+**O que os números não dizem:** se a voz é agradável de ouvir dez vezes por dia,
+se a prosódia de pergunta soa natural, se o áudio sintético engana o STT de um
+jeito que a sua voz não engana. Por isso o `RESULTS.md` tem coluna subjetiva.
+
+## Regra de aceite
+
+Um motor só entra no gateway se couber no orçamento da seção 11 do plano:
+**STT em 200–500 ms** e **TTS até o primeiro chunk em 150–400 ms**. Note que o
+que importa no TTS é o *primeiro chunk*, não o áudio inteiro — falar antes de
+terminar de gerar é um dos dois maiores ganhos de latência do projeto.
