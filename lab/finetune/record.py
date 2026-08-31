@@ -2,6 +2,8 @@
 
     python -m lab.finetune.record              # continues where you stopped
     python -m lab.finetune.record --review 12  # listen to and redo one take
+    python -m lab.finetune.record --redo 1-10  # drop a range and record it again
+    python -m lab.finetune.record --reset      # start the dataset over
     python -m lab.finetune.record --status
 
 Produces the layout piper.train expects:
@@ -23,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -88,6 +91,48 @@ def capture(index: int, device: int | None) -> bool:
     return True
 
 
+def reset() -> None:
+    """Throw the dataset away and start over.
+
+    Confirmed out loud because the recordings are the expensive part: a wrong
+    keystroke here costs an hour of reading, not a re-run of a script.
+    """
+    recorded = done()
+    if not recorded:
+        print("\n  nada gravado ainda.")
+        return
+
+    seconds = sum(len(read_wav(take_path(i))[0]) / TARGET_RATE for i in recorded)
+    print(f"\n  isso apaga {len(recorded)} gravacoes ({seconds / 60:.1f} min) em {WAVS}")
+    if input("  digite APAGAR para confirmar: ").strip() != "APAGAR":
+        print("  cancelado.")
+        return
+
+    shutil.rmtree(ROOT)
+    print("  dataset apagado. pode comecar de novo.")
+
+def redo(spec: str) -> None:
+    """Delete one phrase or a range so the next run records them again.
+
+    Cheaper than --reset when only the first few takes went wrong: you keep
+    everything that was already good.
+    """
+    if "-" in spec:
+        first, last = (int(part) for part in spec.split("-", 1))
+    else:
+        first = last = int(spec)
+
+    removed = 0
+    for index in range(first, last + 1):
+        path = take_path(index)
+        if path.exists():
+            path.unlink()
+            removed += 1
+
+    write_metadata()
+    print(f"\n  {removed} gravacoes apagadas ({first}-{last}). Rode de novo para regravar.")
+
+
 def status() -> None:
     recorded = done()
     seconds = sum(len(read_wav(take_path(i))[0]) / TARGET_RATE for i in recorded)
@@ -117,11 +162,25 @@ def main() -> None:
     parser.add_argument("--speaker", help="alto-falante, para --review")
     parser.add_argument("--review", type=int, metavar="N", help="ouvir e refazer uma frase")
     parser.add_argument("--status", action="store_true", help="quanto ja foi gravado")
+    parser.add_argument("--reset", action="store_true", help="apagar tudo e recomecar")
+    parser.add_argument(
+        "--redo",
+        metavar="N-M",
+        help="apagar uma frase ou um intervalo para regravar (ex: 3 ou 1-10)",
+    )
     parser.add_argument("--from", dest="start", type=int, default=1, help="comecar da frase N")
     args = parser.parse_args()
 
     if args.status:
         status()
+        return
+
+    if args.reset:
+        reset()
+        return
+
+    if args.redo:
+        redo(args.redo)
         return
 
     device = ensure("input", args.mic)

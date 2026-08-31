@@ -16,6 +16,8 @@ py -m lab.devices                     # confirme o microfone antes
 py -m lab.finetune.record
 py -m lab.finetune.record --status    # quanto já tem
 py -m lab.finetune.record --review 12 # ouvir e refazer a frase 12
+py -m lab.finetune.record --redo 1-10  # apagar as 10 primeiras e regravar
+py -m lab.finetune.record --reset     # apagar tudo e comecar de novo
 ```
 
 São 95 frases: 45 do domínio do assistente ("Timer de dez minutos", "Acendi a luz
@@ -24,6 +26,10 @@ nasais, encontros consonantais, perguntas, estrangeirismos.
 
 Para sozinha quando você para de falar. Pode parar com `q` e continuar depois:
 retoma de onde ficou. Recusa automaticamente takes baixos demais ou saturados.
+
+Se as primeiras saírem ruins, `--redo 1-10` apaga só aquele intervalo e mantém o
+resto. `--reset` apaga tudo, e pede confirmação digitada — gravação é a parte
+cara, um engano aqui custa uma hora de leitura, não uma re-execução de script.
 
 **O que mais importa não é configuração:** uma sessão só, uma distância do
 microfone, um humor só. O modelo copia o seu ritmo e a sua energia — se a segunda
