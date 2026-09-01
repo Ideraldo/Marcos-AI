@@ -75,3 +75,54 @@ captura de áudio substitui só a entrada; nada do caminho já validado muda.
 - **LLM de produção.** O plano fixa `deepseek-v4-flash`; hoje roda Ollama local
   em dev. Falta confirmar id e preço na documentação oficial antes de codar o
   provedor de nuvem.
+
+---
+
+## D4 — Voz própria por fine-tune do Piper, não por clonagem zero-shot
+
+**Data:** 2026-08-31
+**O plano diz:** seção 9 escolhe "Piper ou TTS de nuvem", sem tratar de voz
+personalizada.
+
+**O que mudou:** a voz do assistente passa a ser a do usuário, obtida por
+fine-tune de um checkpoint pt-BR.
+
+**Por quê:** clonagem zero-shot (XTTS-v2, F5-TTS) entrega timbre sem treino, mas
+são modelos de 1,5 a 2 GB que exigem GPU — na Pi não rodam. O fine-tune do Piper
+entrega um modelo de 60 MB a RTF 0,05, que é o único caminho com timbre próprio
+**e** velocidade de Pi.
+
+Clonagem zero-shot continua útil para uma coisa: pré-gerar o cache de frases
+fixas da regra 2 da seção 5, uma vez no PC, sem custo em execução.
+
+**Consequências:**
+- Os checkpoints de treino pt-BR não estão mais no repositório oficial do Piper
+  (saiu do ar). Os que sobreviveram estão no OpenVoiceOS, e são de vozes "high"
+  que nem aparecem na lista oficial de download.
+- Exige 30 a 60 min de gravação do usuário — que servem também para o wake word
+  da seção 9.
+
+---
+
+## D5 — Dataset de voz precisa de mais de 15 minutos
+
+**Data:** 2026-08-31
+**O que mudou:** o primeiro treino, com 15,2 min e 203 frases, foi descartado. O
+corpus subiu para 315 frases (~30 min).
+
+**Por quê:** medido, não suposto. Na época 318 o WER do corpus tinha caído para
+11,3% enquanto o de texto novo ficava parado em 39,7% — a assinatura de
+memorização. Não era falta de épocas: 14.828 passos já haviam rodado. Era falta
+de material para generalizar.
+
+Uma voz que só sabe dizer as frases gravadas é inútil aqui, porque a resposta do
+LLM nunca é uma frase pré-escrita.
+
+**Consequências:**
+- Todo treino passa a ser validado com `lab.finetune.generalize`, que mede WER
+  em frases nunca gravadas *e* no corpus. A distância entre as duas é o que
+  distingue "decorou" de "ainda cru" — diagnósticos com decisões opostas.
+- Trechos de 10–15 s viraram o formato padrão: o `collate` do Piper preenche o
+  batch até a amostra mais longa, e na inferência ele divide por sentença de
+  qualquer forma.
+- Se 30 min não bastarem, um bloco 4. A medição responde sem adivinhação.

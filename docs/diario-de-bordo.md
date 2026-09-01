@@ -389,10 +389,166 @@ GPU → export → síntese a RTF 0,06.
 
 ---
 
+## Dia 3 — O treino rodou, e o modelo decorou
+
+Deixei o fine-tune rodando e fui acompanhando. Este foi o dia em que uma intuição
+minha se confirmou com número — e em que a ferramenta que eu mandei construir
+para medir isso estava, ela mesma, errada na primeira versão.
+
+### Ouvindo o treino crescer
+
+Por volta da época 100 exportei um checkpoint intermediário para ouvir. Descobri
+no caminho que **não precisava fazer nada para gerá-lo**: o Lightning já salva
+sozinho a cada época, então era só exportar num segundo terminal, sem parar o
+treino.
+
+Primeira impressão, época 113: **timbre reconhecível, mas bem robótico**. Achei
+normal para o começo.
+
+Os números do treino apoiavam:
+
+| | Época 113 | Época 322 |
+|---|---|---|
+| `val_mel` (menor = melhor) | 0,4646 | 0,4324 |
+| `val_mos` (maior = melhor) | 2,89 | 3,12 |
+
+Estava aprendendo. Não tinha estagnado.
+
+### A dúvida que virou o assunto do dia
+
+Ouvindo a época 318, falei uma coisa que estava me incomodando desde o começo:
+
+> *"Só vamos precisar tomar cuidado para que ele não fique totalmente
+> especializado em dizer as mesmas palavras ou frases, mas que consiga ler
+> qualquer texto do mesmo jeito."*
+
+Era exatamente o risco de um fine-tune com 15 minutos e 203 frases: em vez de
+aprender o meu **timbre**, o modelo decorar as minhas **frases**. Soaria ótimo
+dizendo "Timer de dez minutos" e desmoronaria em texto novo — que é o que o
+assistente vai falar o dia inteiro, já que a resposta do LLM nunca é uma frase
+pré-escrita.
+
+Isso virou uma ferramenta: sintetizar 15 frases **que nunca foram gravadas** —
+nomes próprios, siglas, estrangeirismos, trava-línguas, uma frase de três linhas
+— e **transcrever o resultado de volta** com o Whisper. Se a voz articula, o STT
+entende. Se desmonta, o WER sobe e mostra onde.
+
+### A ferramenta errada, e o erro que ela quase causou
+
+A primeira versão olhou só o holdout, viu WER 45,1% contra 22,3% da base e
+concluiu:
+
+```
+ATENCAO: bem pior que a base em texto novo -- sinal de overfitting.
+Volte para um checkpoint anterior e pare o treino mais cedo.
+```
+
+**Estava errada.** E o erro era grave, porque mandava fazer o oposto do certo.
+
+WER alto em texto novo não distingue duas doenças opostas:
+
+| | Corpus | Holdout | O que fazer |
+|---|---|---|---|
+| **Decorou** | baixo | alto | Voltar checkpoint; passou do ponto |
+| **Ainda cru** | alto | alto | **Treinar mais** |
+
+A diferença está na *distância* entre as colunas, não no valor de nenhuma delas.
+Na época 113 o modelo ia mal nos dois igualmente — tinha saído da articulação
+limpa da base e ainda não chegado na minha. Era exatamente o que eu tinha ouvido:
+robótico. Seguir aquele aviso teria abortado um treino saudável.
+
+Refeita, medindo as duas colunas, o diagnóstico na época 113 virou **"ainda
+cru — continue treinando"**.
+
+*Lição para o vídeo: uma ferramenta de diagnóstico que só mede metade do
+problema dá o conselho oposto ao correto, com toda a confiança do mundo.*
+
+### Ouvi a 318 e não tinha mudado quase nada
+
+Foi aí que a coisa ficou clara. Exportei a época 318, ouvi, e **os defeitos eram
+os mesmos da 113**. Perguntei se mais épocas resolveriam.
+
+Com a ferramenta consertada, o número respondeu:
+
+| | Época 113 | Época 318 |
+|---|---|---|
+| Corpus (frases treinadas) | 26,3% | **11,3%** |
+| Holdout (texto novo) | 39,2% | **39,7%** |
+| Distância | +12,8% | **+28,4%** |
+
+O corpus melhorou muito. O texto novo **não saiu do lugar**. A distância dobrou.
+
+Essa é a assinatura de decorar: o modelo ficando cada vez melhor em dizer
+exatamente as minhas 203 frases, e nem um pouco melhor em ler qualquer outra
+coisa. A base `dii-high` faz 22,9% no mesmo holdout; a minha voz travou em 39,7%.
+
+Uma ressalva honesta que registrei junto: o VITS tem amostragem estocástica, e a
+mesma época 113 mediu 39,2% numa rodada e 34,4% noutra. Há uns ±5 pontos de
+ruído. Mas a queda do corpus de 26,3% para 11,3% está muito além disso, e o
+holdout está plano dentro do ruído.
+
+### Não era falta de tempo, era falta de material
+
+O que fecha o diagnóstico: **14.828 passos** já rodados. A base tinha 1,9 milhão.
+Não é treino imaturo — é que 203 frases são poucas para o modelo ter o que
+generalizar. Ele esgotou o que dava para extrair delas e passou a memorizá-las.
+
+Foi por isso que os defeitos não mudaram entre a 113 e a 318. Não eram
+imaturidade: eram o teto dos dados.
+
+**Decisão: parar o treino e gravar mais.**
+
+### Frases longas ou parágrafos?
+
+Perguntei se podia gravar parágrafos inteiros, para render mais minuto por
+gravação, ou se áudio grande atrapalha o treino.
+
+A resposta veio do código do Piper, não de opinião. **Não há filtro de
+comprimento** — parágrafos não seriam descartados. Mas há dois tetos:
+
+- **O padding.** O `collate` preenche todas as amostras do batch até a mais
+  longa. Um trecho de 30 s força os outros sete do batch a 30 s — VRAM
+  desperdiçada numa placa de 6 GB.
+- **Na inferência o Piper divide por sentença de qualquer jeito.** Treinar em
+  parágrafos ensina uma prosódia que ele nunca vai usar.
+
+Ficou em **10 a 15 segundos**: dois ou três períodos encadeados. Rende mais
+minuto por ENTER apertado, cabe no batch, e mantém muitas amostras distintas.
+
+O bloco 3 tem 112 trechos, ~15 min, levando o corpus a **315 frases e ~30
+minutos**. O que variei foi o *ritmo*, não só as palavras — diálogo, enumeração,
+instrução técnica, narrativa, opinião — porque o que faltava era diversidade de
+construção, não mais do mesmo.
+
+### O que ainda pode dar errado
+
+30 minutos é o dobro, mas não é garantia. A referência prática para
+generalização confortável é 40 a 60 minutos. Se o holdout continuar empacado
+depois do retreino, vem um bloco 4.
+
+A diferença é que agora dá para saber sem adivinhar. E foi a medição que pegou o
+problema **antes** de gastar as oito horas completas de GPU.
+
+### Também hoje
+
+- **Export por época.** `--list` mostra os checkpoints disponíveis, `--epoch N`
+  exporta uma específica com a época no nome, para poder ouvir duas lado a lado
+  nas mesmas frases.
+- **A skill `/documentar`**, para fechar o dia sem depender de eu lembrar de
+  tudo.
+- Confirmado que **dá para retomar o treino se o PC desligar** — o `last.ckpt` é
+  reescrito a cada época e o `--resume` volta com otimizador e época intactos. É
+  o mesmo mecanismo que tive que desativar no primeiro arranque, quando ele
+  restaurava a época 3908 do checkpoint alheio.
+
+---
+
 ## Onde estamos agora
 
-**Treino rodando.** O fine-tune do `pt_BR-dii-high` com 15,2 minutos da minha
-voz.
+**Primeiro treino descartado por overfitting.** O fine-tune com 15,2 min decorou
+o corpus: 11,3% de WER nas frases treinadas contra 39,7% em texto novo, parado.
+O corpus foi ampliado para 315 frases (~30 min) e o próximo passo é gravar o
+bloco 3 e retreinar do zero.
 
 Fechado até aqui:
 
@@ -401,11 +557,19 @@ Fechado até aqui:
 | Arquitetura | Dois processos, WebSocket | Migrar = trocar URL |
 | LLM | API na VPS (Ollama local em dev) | Único que não cabe na Pi |
 | STT | faster-whisper (tamanho a definir na Pi) | 9,0% WER, 2,2% em comandos |
-| TTS | Piper, com voz própria em treino | RTF 0,05, offline |
+| TTS | Piper — vozes jeff e cadu aprovadas | RTF 0,05, offline |
+| Voz própria | Fine-tune do `pt_BR-dii-high` | Único caminho com timbre **e** velocidade |
 | Locutor | ECAPA-TDNN | Cadastro, não treino |
+
+Próximo passo imediato:
+
+1. Gravar o bloco 3 (frases 204–315, ~15 min)
+2. Retreinar do zero a partir do `dii-high` com os ~30 min
+3. Rodar `lab.finetune.generalize` e verificar se as duas colunas caem juntas
 
 Em aberto:
 
+- Se 30 min bastam para generalizar, ou se vai ser preciso um bloco 4
 - Qual tamanho de STT cabe na Pi (medir lá, testar whisper.cpp/sherpa-onnx)
 - Se o gateway deve re-transcrever com modelo maior quando a pergunta vai ao LLM
 - O nome do assistente no código (ainda "BMO", herdado do plano)
@@ -415,7 +579,6 @@ Ainda não começou: roteador de intenções, alarmes locais, rosto, wake word, 
 hardware.
 
 ---
-
 ## Como continuar preenchendo
 
 No fim de cada sessão, rode:

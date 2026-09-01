@@ -52,9 +52,24 @@ mais provável de agradar. Multilíngue, não especialista.
 sumia, sem erro nenhum. Corrigido soletrando os dígitos antes da síntese
 (`lab/numbers.py`). O áudio da frase foi de 3,55 s para 9,41 s.
 
-**Decidido: jeff e cadu aprovadas, e o fine-tune vai acontecer.** O pipeline está
-pronto em [`lab/finetune/`](finetune/README.md) — gravar 95 frases, treinar na
-RTX 2060, exportar um .onnx de 60 MB com o seu timbre a RTF 0,05.
+**Decidido: jeff e cadu aprovadas, e a voz final sai de fine-tune** — ver
+[`lab/finetune/`](finetune/README.md).
+
+### Fine-tune, primeira tentativa: descartada
+
+| Época | WER no corpus | WER em texto novo | Distância |
+|---|---|---|---|
+| 113 | 26,3% | 39,2% | +12,8% |
+| 318 | **11,3%** | **39,7%** | **+28,4%** |
+
+O corpus melhorou muito, o texto novo não saiu do lugar: memorização. A base
+`dii-high` faz 22,9% no mesmo holdout. Não era falta de épocas — 14.828 passos
+já — era falta de material: 15,2 min e 203 frases.
+
+Corpus ampliado para 315 frases (~30 min). Retreino do zero pendente.
+
+> O VITS tem amostragem estocástica: a mesma época 113 mediu 39,2% numa rodada e
+> 34,4% noutra, uns ±5 pontos de ruído. A queda do corpus está muito além disso.
 
 *Sua avaliação (por voz):* naturalidade ___/5 · prosódia de pergunta ___/5 ·
 números e horas ___/5 · cansa depois de 10 usos? ___
@@ -167,7 +182,8 @@ Repetir sobre a sua voz:
 
 1. ~~Piper~~ · ~~MMS~~ · ~~whisper tiny/base/small~~ · ~~wav2vec2 pt~~ · ~~Vosk~~
 2. ~~Gravar a voz real e refazer a varredura de STT~~ — **feito, o `small` ganhou**
-3. **Ouvir Kokoro e as demais vozes do Piper** — a escolha de voz segue aberta
+3. ~~Ouvir as vozes do Piper~~ — jeff e cadu aprovadas; voz final sai do fine-tune
+3b. **Gravar o bloco 3 (frases 204–315) e retreinar** — o primeiro treino decorou
 4. whisper.cpp / sherpa-onnx com o `small`: se forem rápidos o bastante em ARM,
    resolvem a tensão da seção acima sem concessão de qualidade
 5. wav2vec2 com decoder kenlm, direto na Pi
