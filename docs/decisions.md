@@ -126,3 +126,35 @@ LLM nunca é uma frase pré-escrita.
   batch até a amostra mais longa, e na inferência ele divide por sentença de
   qualquer forma.
 - Se 30 min não bastarem, um bloco 4. A medição responde sem adivinhação.
+
+---
+
+## D6 — Hiperparâmetros de fine-tune, não os padrões do Piper
+
+**Data:** 2026-08-31
+**O que mudou:** learning rate do gerador de `2e-4` para `1e-4`, e o alvo de
+épocas de 2000 para 1000.
+
+**Por quê:** os padrões do Piper são calibrados para **treinar do zero** com
+dezenas de milhares de amostras. Num fine-tune de meia hora, `2e-4` afasta o
+modelo rápido demais dos pesos da base — que já sabem falar português — e o leva
+a ajustar as poucas frases disponíveis, que é a definição de decorar.
+
+Agrava no nosso caso que o `lr_decay` do Piper é `0.999875` **por época**,
+pensado para épocas de centenas de passos. As nossas têm ~40, então a taxa quase
+não decai ao longo do treino.
+
+Sobre as épocas: a unidade que importa é **passo**, não época. O v1 rodou 368
+épocas, que são apenas 14.828 passos; fine-tunes de VITS costumam pedir 10 a 30
+mil.
+
+**Consequências:**
+- O timbre demora mais a aparecer. É o preço de não memorizar.
+- `--lr` fica exposto: se o v2 ainda decorar, `5e-5` é o próximo degrau, antes de
+  gravar mais.
+- `accumulate_grad_batches` **não é uma opção aqui**: o VITS treina com
+  otimização manual (dois otimizadores) e o Lightning recusa acumulação nesse
+  modo. Para batch maior, só subindo `--batch-size`.
+- Early stopping automático segue descartado, seguindo o aviso dos autores do
+  Piper: o mel L1 satura cedo enquanto as perdas adversariais ainda removem
+  artefatos audíveis.

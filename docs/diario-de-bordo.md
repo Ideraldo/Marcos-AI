@@ -543,12 +543,134 @@ problema **antes** de gastar as oito horas completas de GPU.
 
 ---
 
+## Dia 3 (continuação) — Arrumar a casa antes do segundo treino
+
+Entre condenar o v1 e iniciar o v2, um bloco de trabalho que não era sobre
+modelo nenhum: guardar o que valia do treino velho, consertar o que estava
+quebrado na gravação, e revisar como o treino é feito.
+
+### O que sobrou do v1 (menos do que eu queria)
+
+Pedi para guardar as gerações 0, 50, 100, 150, 200, 250 e a última, para poder
+mostrar a evolução no vídeo. **Metade não existia mais.**
+
+O `ModelCheckpoint` do Lightning guarda apenas os cinco melhores por métrica e
+vai apagando os antigos conforme treina. Quando fui arquivar, a época mais antiga
+que restava era a **247**. A 113 só sobreviveu por acaso: eu tinha exportado o
+`.onnx` naquele dia para ouvir.
+
+Ficaram seis gerações — 113, 247, 292, 318, 330 e 361 — em `.onnx`, somando 363
+MB contra os 8,7 GB dos checkpoints. Depois disso, apagar os 9,2 GB do run velho
+foi indolor.
+
+*Lição, e virou recomendação no `comandos.md`: exportar `.onnx` ao longo do
+treino, não só no fim. São 60 MB contra 845 MB, e é o único formato que se ouve.*
+
+### O gravador cortava no meio da frase
+
+Comecei a gravar o bloco 3 e a gravação **encerrava sozinha antes da hora**, em
+pausas naturais — depois de um ponto final ou de uma vírgula longa.
+
+Erro meu: eu tinha posto **700 ms** de silêncio como limite para encerrar, valor
+escolhido quando o corpus só tinha frases curtas. Os trechos do bloco 3 têm dois
+ou três períodos, e a pausa depois de um ponto no meio passa fácil de um segundo.
+
+As duas primeiras gravações saíram com 3,8 s e 3,1 s onde precisavam de uns 8 s.
+Se tivesse passado despercebido, o modelo aprenderia a parar no meio da frase.
+
+Padrão subiu para **1600 ms**, com `--silence` para ajustar. O `check` pegou as
+duas na hora — 32,8 e 42,5 caracteres por segundo contra o limite de 20 — então o
+estrago foi regravar duas frases.
+
+Ao longo da sessão o mesmo detector pegou mais seis: cinco truncadas e uma
+arrastada, com 15,5 s para uma frase de 108 caracteres. **Resultado final: 315
+gravações, 30,9 minutos, zero problemas.**
+
+### Revisando como o treino é feito
+
+Antes de começar o v2, perguntei se havia estratégias contra overfitting além de
+gravar mais. Descobri que estávamos **nos padrões do Piper o tempo todo** — e que
+esses padrões são para *treinar do zero* com dezenas de milhares de amostras.
+
+**O learning rate era o problema silencioso.** O padrão é `2e-4`. Num fine-tune
+de meia hora isso é agressivo: o modelo se afasta rápido demais dos pesos da
+base, que já sabem falar português, e passa a ajustar as poucas frases que tem.
+Isso é literalmente a definição de decorar. Caiu para `1e-4`.
+
+Tem um agravante que só apareceu olhando os números junto: o `lr_decay` do Piper
+é `0.999875` **por época**, calibrado para épocas grandes. As nossas têm ~40
+passos em vez de centenas — então a taxa cai muito mais devagar por passo do que
+o autor imaginou. Na prática treinávamos quase a taxa constante.
+
+**E épocas não eram a unidade certa.** Uma época aqui é minúscula. O v1 rodou 368
+épocas, que são só **14.828 passos**; fine-tunes de VITS costumam pedir 10 a 30
+mil. O padrão caiu de 2000 para 1000 épocas.
+
+### Uma tentativa que não deu
+
+Quis usar `accumulate_grad_batches` para aumentar o batch efetivo sem gastar
+VRAM — mais amostras por atualização é uma das formas mais baratas de segurar a
+memorização.
+
+**Não funciona aqui.** O VITS treina com otimização manual (dois otimizadores,
+gerador e discriminador) e o Lightning recusa acumulação nesse modo:
+
+```
+__verify_manual_optimization_support
+```
+
+Descobri num smoke test de uma época, não em produção. Removido e documentado —
+inclusive porque é o tipo de coisa que eu tentaria de novo daqui a três meses.
+
+### A pergunta sobre treino e validação
+
+Perguntei uma coisa que me incomodava: *não deveríamos separar parte dos áudios
+para validação?*
+
+A resposta é que **já existe, em três níveis** — e é a distinção entre eles que
+explica por que a validação do Piper sozinha não teria pego o problema do v1:
+
+| Conjunto | O que é | O que pergunta |
+|---|---|---|
+| `validation_split = 0.1` | ~31 gravações minhas que não entram no treino | "você reproduz bem um áudio meu que não treinou?" |
+| Holdout (`generalize`) | 15 frases que **ninguém nunca gravou** | "você sabe ler um texto que nunca viu?" |
+| Amostra do corpus | 6 frases treinadas | serve de referência para medir a distância |
+
+A validação do Piper mede reprodução de áudio. O holdout mede leitura de texto
+novo — que é o que o assistente faz o dia inteiro, já que a resposta do LLM nunca
+é uma frase pré-escrita. Foi a comparação entre os dois que condenou o v1.
+
+### Para não perder a evolução de novo
+
+Escrevi um vigia que roda ao lado do treino e exporta um `.onnx` a cada 100
+épocas. Processo separado, exporta na CPU, só lê arquivos — não toca no treino. Se
+o Lightning estiver escrevendo o checkpoint naquele instante, ele avisa e tenta no
+ciclo seguinte em vez de morrer.
+
+Testei contra um run descartável de uma época antes de confiar nele para a noite
+inteira. Vale registrar que testar isso gerou um mal-entendido de dez segundos:
+achei que ele fosse rodar o meu treino de verdade.
+
+### v2 iniciado
+
+- 30,9 min de áudio (contra 15,2 do v1)
+- learning rate 1e-4 (contra 2e-4)
+- 1000 épocas planejadas
+- exportando sozinho a cada 100 épocas
+
+Fica rodando a noite. De manhã, ouvir a série e rodar o `generalize`: o que se
+quer ver são **as duas colunas caindo juntas**.
+
+---
+
 ## Onde estamos agora
 
-**Primeiro treino descartado por overfitting.** O fine-tune com 15,2 min decorou
-o corpus: 11,3% de WER nas frases treinadas contra 39,7% em texto novo, parado.
-O corpus foi ampliado para 315 frases (~30 min) e o próximo passo é gravar o
-bloco 3 e retreinar do zero.
+**Treino v2 rodando.** Fine-tune do `pt_BR-dii-high` com 30,9 min de áudio,
+learning rate 1e-4, 1000 épocas, exportando um `.onnx` a cada 100 épocas para
+haver uma série audível de manhã.
+
+O v1 foi descartado por memorização e está arquivado em
+`lab/finetune/arquivo/v1-decorou/` — seis gerações em `.onnx`, para o vídeo.
 
 Fechado até aqui:
 
@@ -557,19 +679,20 @@ Fechado até aqui:
 | Arquitetura | Dois processos, WebSocket | Migrar = trocar URL |
 | LLM | API na VPS (Ollama local em dev) | Único que não cabe na Pi |
 | STT | faster-whisper (tamanho a definir na Pi) | 9,0% WER, 2,2% em comandos |
-| TTS | Piper — vozes jeff e cadu aprovadas | RTF 0,05, offline |
+| TTS | Piper — jeff e cadu aprovadas | RTF 0,05, offline |
 | Voz própria | Fine-tune do `pt_BR-dii-high` | Único caminho com timbre **e** velocidade |
 | Locutor | ECAPA-TDNN | Cadastro, não treino |
 
 Próximo passo imediato:
 
-1. Gravar o bloco 3 (frases 204–315, ~15 min)
-2. Retreinar do zero a partir do `dii-high` com os ~30 min
-3. Rodar `lab.finetune.generalize` e verificar se as duas colunas caem juntas
+1. De manhã, ouvir a série `pt_BR-ideraldoep100`, `ep200`, `ep300`…
+2. Rodar `lab.finetune.generalize` no melhor deles contra o `dii-high`
+3. Se as duas colunas caírem juntas, escolher a época e fechar o TTS.
+   Se o holdout empacar de novo: `--lr 5e-5`, depois bloco 4, depois batch maior
 
 Em aberto:
 
-- Se 30 min bastam para generalizar, ou se vai ser preciso um bloco 4
+- Se 30 min bastam para generalizar
 - Qual tamanho de STT cabe na Pi (medir lá, testar whisper.cpp/sherpa-onnx)
 - Se o gateway deve re-transcrever com modelo maior quando a pergunta vai ao LLM
 - O nome do assistente no código (ainda "BMO", herdado do plano)

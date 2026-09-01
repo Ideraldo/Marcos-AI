@@ -66,7 +66,16 @@ O corpus melhorou muito, o texto novo não saiu do lugar: memorização. A base
 `dii-high` faz 22,9% no mesmo holdout. Não era falta de épocas — 14.828 passos
 já — era falta de material: 15,2 min e 203 frases.
 
-Corpus ampliado para 315 frases (~30 min). Retreino do zero pendente.
+Corpus ampliado para 315 frases. **Dataset final: 315 gravações, 30,9 min.**
+
+### Fine-tune, segunda tentativa: em andamento
+
+| | v1 (descartado) | v2 |
+|---|---|---|
+| Áudio | 15,2 min | **30,9 min** |
+| Learning rate | 2e-4 (padrão) | **1e-4** |
+| Épocas | 368 rodadas | 1000 planejadas |
+| Export | manual | automático a cada 100 épocas |
 
 > O VITS tem amostragem estocástica: a mesma época 113 mediu 39,2% numa rodada e
 > 34,4% noutra, uns ±5 pontos de ruído. A queda do corpus está muito além disso.
@@ -183,7 +192,8 @@ Repetir sobre a sua voz:
 1. ~~Piper~~ · ~~MMS~~ · ~~whisper tiny/base/small~~ · ~~wav2vec2 pt~~ · ~~Vosk~~
 2. ~~Gravar a voz real e refazer a varredura de STT~~ — **feito, o `small` ganhou**
 3. ~~Ouvir as vozes do Piper~~ — jeff e cadu aprovadas; voz final sai do fine-tune
-3b. **Gravar o bloco 3 (frases 204–315) e retreinar** — o primeiro treino decorou
+3b. ~~Gravar o bloco 3 e retreinar~~ — v2 rodando com 30,9 min e lr 1e-4
+3c. **Ouvir a série exportada e rodar o generalize** — decide se 30 min bastam
 4. whisper.cpp / sherpa-onnx com o `small`: se forem rápidos o bastante em ARM,
    resolvem a tensão da seção acima sem concessão de qualidade
 5. wav2vec2 com decoder kenlm, direto na Pi
