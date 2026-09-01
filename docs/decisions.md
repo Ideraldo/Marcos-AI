@@ -398,8 +398,10 @@ container que um dia sobe numa VPS pequena.
   Docker Desktop resolve esse nome sozinho, o Docker Engine em Linux (o caso da
   VPS) não.
 - **Não havia `.dockerignore`.** O contexto de build é a raiz do projeto, porque
-  `common/` precisa entrar junto. Sem ignorar nada, o `.venv` e os modelos de
-  `lab/` iriam para o daemon antes de a primeira linha do Dockerfile rodar.
+  `common/` precisa entrar junto. Sem ignorar nada, iriam para o daemon **41 GB**
+  (medido: 5,8 GB de `.venv`, 7,0 GB de `lab/models`, 28 GB de `lab/finetune`)
+  antes de a primeira linha do Dockerfile rodar. O `.gitignore` não vale aqui —
+  o Docker não lê aquele arquivo.
 - **O processo rodava como root.** Corrigido: usuário `marcos`, uid 1000.
 
 **Consequências:**
@@ -413,3 +415,39 @@ container que um dia sobe numa VPS pequena.
 tem Docker nem WSL2. O critério de aceite da Fase 1 continua em aberto, e o que
 está aqui é código escrito com cuidado, não comportamento observado. A primeira
 pessoa a rodar isso deve tratar como não testado.
+
+---
+
+## D16 — O Docker fica para a VPS; a virtualização segue desligada aqui
+
+**Data:** 2026-09-01
+**O plano diz:** a Fase 1 aceita quando `docker compose up` sobe tudo, na
+máquina de desenvolvimento.
+
+**O que mudou:** o critério de aceite da Fase 1 fica **adiado até a Fase 5**, e
+será verificado na VPS. Nesta máquina, o gateway continua rodando com `uvicorn`
+direto.
+
+**Por quê:** a virtualização está desligada no firmware — confirmado por duas
+fontes independentes (`Win32_Processor.VirtualizationFirmwareEnabled` e
+`systeminfo`: *"Virtualização Habilitada no Firmware: Não"*). O processador
+suporta; é escolha de BIOS. E é escolha deliberada: com ela ligada, o Vanguard
+do Valorant não deixa o jogo abrir. Esta máquina também é de jogo.
+
+Sem virtualização não há WSL2, e sem WSL2 não há Docker Desktop. Não é
+contornável por elevação nem por configuração do Docker.
+
+**Por que isso custa pouco:** a imagem existe para rodar **na VPS**, que é Linux
+com Docker Engine — onde nada disso se aplica. Verificar aqui seria conveniente,
+não necessário. E o que o container mudaria no desenvolvimento é nada: o
+`uvicorn` sobe o mesmo `gateway.main:app`.
+
+**O que fica em aberto, e é preciso lembrar:** o `Dockerfile`, o
+`docker-compose.yml` e o `.dockerignore` de [D15](#d15--a-imagem-do-gateway-não-instala-o-requirementstxt)
+**nunca foram executados**. O primeiro `docker compose up` da vida deles vai ser
+na VPS, no dia do deploy — que é o pior dia para descobrir um erro de sintaxe.
+Se aparecer qualquer outra máquina com Docker antes disso (um notebook, um
+runner de CI, a Pi), rodar o build ali é meia hora que se paga.
+
+**Alternativa considerada e descartada:** Docker Desktop com backend Hyper-V em
+vez de WSL2. Não resolve — o Hyper-V exige a mesma virtualização de firmware.

@@ -90,9 +90,11 @@ Goal: containerised gateway, token auth, simulated link latency.
 Accepted when `docker compose up` brings everything up.
 
 Token auth and the simulated delay work today (`SIMULATED_LATENCY_MS` in `.env`;
-80 is wifi, 150 is 4G). **The container is written but unverified** -- it has
-never been run, because this machine has neither Docker nor WSL2. Treat the
-command below as untested:
+80 is wifi, 150 is 4G). **The container is written but unverified**, and will
+stay that way until the VPS: firmware virtualisation is off on this machine by
+choice, so there is no WSL2 and no Docker Desktop (D16). The VPS runs Docker
+Engine on Linux, where none of that applies. Treat the command below as
+untested:
 
 ```powershell
 docker compose -f gateway/docker-compose.yml up --build
@@ -136,9 +138,8 @@ in `docs/voz-e-locutor.md`:
 
 ## What comes next
 
-**First, actually running the container.** Phase 1 is written and never
-executed; the acceptance criterion is one `docker compose up` away, and Docker
-is the plan for the VPS anyway.
+**Phase 1's container is written but never executed** (D15), and its first real
+run will be on the VPS (D16). Nothing else waits on it.
 
 **Phase 2 -- local alarms and timers, with the intent router.** The core of
 replacing the Alexa, and the only part that has to survive an internet outage.

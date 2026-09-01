@@ -1079,8 +1079,16 @@ o ambiente de desenvolvimento, incluindo o outro por referência. [D15](decision
 contexto de build é a raiz do projeto — precisa ser, porque `common/` é o
 contrato compartilhado e tem que entrar na imagem. Sem ignorar nada, o Docker
 empacota `.venv` e `lab/models/` e manda tudo para o daemon **antes da primeira
-linha do Dockerfile rodar**. São os 32 GB do D12 viajando para construir uma
-imagem que não usa nenhum deles.
+linha do Dockerfile rodar**. Medi o que iria junto:
+
+```
+5.8G  .venv
+7.0G  lab/models
+ 28G  lab/finetune
+```
+
+**41 GB** viajando para o daemon para construir uma imagem que não usa um byte
+de nenhum deles. E o `.gitignore` não ajuda aqui: o Docker não lê aquele arquivo.
 
 De quebra, o processo rodava como root, o que é indiferente na minha mesa e não
 é indiferente numa VPS exposta. Agora tem usuário próprio e um `HEALTHCHECK` que
@@ -1095,6 +1103,26 @@ e a pasta vazia ficou para trás com um `__pycache__` dentro.
 **Não rodei.** Esta máquina não tem Docker nem WSL2 — `wsl -l -v` responde que o
 subsistema não está instalado. Então o que existe agora é código escrito com
 cuidado, não comportamento observado, e está marcado assim no D15.
+
+Tentei resolver: `wsl --install`. O Windows respondeu que o subsistema não está
+instalado — a mesma mensagem que ele dá para qualquer argumento quando a feature
+está desligada. Achei que fosse falta de administrador. Não era:
+
+```
+Requisitos do Hyper-V:  Extensão de Modo de Monitor VM: Sim
+                        Virtualização Habilitada no Firmware: Não
+```
+
+**A virtualização está desligada na BIOS**, e vai continuar. Com ela ligada, o
+Vanguard não deixa o Valorant abrir, e esta máquina também é de jogo. Sem
+virtualização não há WSL2, sem WSL2 não há Docker Desktop, e o backend Hyper-V
+não é saída porque exige exatamente a mesma coisa.
+
+Então o Docker fica para a VPS ([D16](decisions.md)), que é onde ele existe para
+rodar de qualquer forma — Linux, Docker Engine, nada disso se aplica lá. O custo
+disso é honesto e vale escrever: **o primeiro `docker compose up` da vida desses
+arquivos vai ser no dia do deploy**, que é o pior dia possível para descobrir um
+erro de digitação no YAML.
 
 Isso me incomoda menos do que o estado anterior, e por um motivo específico:
 antes, a Fase 1 *parecia* pronta porque os arquivos existiam. Agora ela está
@@ -1137,10 +1165,12 @@ Fechado até aqui:
 **Fase 0 cumprida por inteiro, e além.** O critério era o loop em dois processos;
 temos LLM real, voz própria e o STT fora do stub.
 
-**Fase 1 escrita, não verificada.** Token e latência simulada funcionam. O
-container foi corrigido (D15) — imagem enxuta, `.dockerignore`, Ollama alcançável
-de dentro, usuário não-root — mas `docker compose up` **nunca rodou**: não há
-Docker nem WSL2 nesta máquina. O critério de aceite continua em aberto.
+**Fase 1 escrita, verificação adiada para a VPS (D16).** Token e latência
+simulada funcionam. O container foi corrigido (D15) — imagem enxuta,
+`.dockerignore`, Ollama alcançável de dentro, usuário não-root — mas
+`docker compose up` **nunca rodou e não vai rodar aqui**: a virtualização fica
+desligada na BIOS por causa do Valorant, e sem ela não há WSL2 nem Docker
+Desktop. Na VPS é Linux, e o problema não existe.
 
 Próximo marco: **Fase 2 — alarmes e timers locais, com o roteador de intenções.**
 É o núcleo da substituição da Alexa, a única parte que precisa sobreviver a uma
@@ -1159,7 +1189,8 @@ números estimados no [Dia 5](#dia-5--o-microfone-entrou-no-fio-e-o-fio-aprendeu
 
 Em aberto:
 
-- **Se o container sobe** — a Fase 1 está escrita e não executada (D15)
+- **Se o container sobe** — só se descobre na VPS (D15, D16). Se aparecer
+  qualquer máquina com Docker antes disso, rodar o build ali se paga.
 - **Se tudo isso cabe na Pi** — nada foi medido lá ainda, nem o Whisper. O
   RTF do dispositivo já subiu de 0,43 para 0,6–0,9 só saindo da bancada para o
   código real. É a maior incerteza do projeto hoje.
