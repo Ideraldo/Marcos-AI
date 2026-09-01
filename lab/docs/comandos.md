@@ -239,6 +239,12 @@ py -m lab.finetune.train --export --epoch 318 --name ideraldo
 Dá para exportar **com o treino rodando**, em outro terminal — não usa a GPU. Uma
 época pode ter dois arquivos (`val_mel` e `val_mos`); são o mesmo modelo.
 
+> **Exporte a cada algumas centenas de épocas, não só no fim.** O
+> `ModelCheckpoint` do Lightning guarda apenas os melhores e vai apagando os
+> antigos: no treino v1, quando fui arquivar, as épocas anteriores à 247 já não
+> existiam mais. Só a 113 sobreviveu, porque eu tinha exportado o `.onnx` na
+> hora. São 60 MB contra 845 MB de um checkpoint.
+
 O `.onnx` e o `.onnx.json` caem em `lab/models/piper/`, então a voz entra na
 bancada como qualquer outra.
 
@@ -302,6 +308,7 @@ Variáveis relevantes em `.env`:
 | `lab/models/piper_ckpt/` | checkpoints base e preparados | não |
 | `lab/finetune/dataset/` | o dataset de treino | não |
 | `lab/finetune/runs/<nome>/` | checkpoints do treino | não |
+| `lab/finetune/arquivo/` | vozes .onnx guardadas de treinos antigos | só o LEIAME |
 | `lab/.devices.json` | microfone e alto-falante escolhidos | não |
 | `lab/speaker/voices.json` | vozes cadastradas | não |
 

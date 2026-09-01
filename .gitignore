@@ -16,3 +16,6 @@ lab/speaker/voices.json
 lab/finetune/dataset/
 lab/finetune/runs/
 lab/finetune/out/
+# o arquivo do treino v1: os .onnx sao grandes, o LEIAME entra
+lab/finetune/arquivo/**/*.onnx
+lab/finetune/arquivo/**/*.onnx.json
