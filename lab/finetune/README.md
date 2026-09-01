@@ -242,6 +242,85 @@ voz lê bem um texto qualquer. Por isso o teste de holdout existe.
 
 ---
 
+## 5. Estratégias contra o overfitting
+
+O que está configurado hoje, por que, e o que foi descartado. O v1 decorou com
+15 min de áudio nos padrões do Piper; estas são as alavancas que existem.
+
+### O que mudou depois do v1
+
+| Ajuste | Antes (v1) | Agora | Efeito |
+|---|---|---|---|
+| Dados | 15,2 min | ~30 min | **a alavanca principal** |
+| Learning rate | 2e-4 (padrão) | **1e-4** | afasta-se mais devagar da base |
+| Épocas padrão | 2000 | **1000** | ~20 mil passos, não 70 mil |
+| Verificação | ouvir | `generalize` a cada 300 épocas | pega antes de terminar |
+
+### Learning rate: o ajuste de maior efeito depois dos dados
+
+O padrão do Piper é `2e-4`, calibrado para **treinar do zero** com dezenas de
+milhares de amostras. Num fine-tune de meia hora essa taxa é agressiva: o modelo
+se afasta rápido demais dos pesos da base — que sabem falar português — e passa a
+ajustar as poucas frases que tem. Isso é a definição de decorar.
+
+`--lr 1e-4` é o padrão agora. Se mesmo assim decorar, `--lr 5e-5` é o próximo
+degrau; o custo é precisar de mais épocas para o timbre aparecer.
+
+> Um detalhe que agrava isso no nosso caso: o `lr_decay` do Piper é `0.999875`
+> **por época**, pensado para épocas grandes. Com 315 gravações e batch 8, uma
+> época tem ~40 passos em vez de centenas — então a taxa cai muito mais devagar
+> por passo do que o autor calibrou. Na prática treinamos quase a taxa constante,
+> o que é mais um motivo para começar de um valor menor.
+
+### Épocas: pensar em passos, não em épocas
+
+Uma "época" aqui é minúscula: ~40 batches. O v1 rodou 368 épocas = 14.828 passos.
+Fine-tunes de VITS costumam pedir 10 a 30 mil passos, então o padrão caiu de 2000
+para **1000 épocas** (~20 mil passos com o dataset novo). Mais que isso, sem
+mais dados, é convite à memorização.
+
+### Verificar durante, não depois
+
+```powershell
+# a cada 100-200 epocas, em outro terminal
+py -m lab.finetune.train --export --epoch 300 --name ideraldo --as v2ep300
+py -m lab.finetune.generalize --voice pt_BR-v2ep300-medium --against pt_BR-dii-high
+```
+
+O padrão saudável é **as duas colunas caindo juntas**. O sinal de parada é a
+distância abrindo: corpus continua caindo, holdout empaca. Foi assim que o v1 foi
+condenado — e a medição custou minutos, não as oito horas de treino.
+
+### O que NÃO dá para usar aqui
+
+- **`accumulate_grad_batches`** seria a forma barata de aumentar o batch efetivo
+  sem gastar VRAM. O VITS treina com **otimização manual** (dois otimizadores,
+  gerador e discriminador) e o Lightning recusa acumulação nesse modo. Descoberto
+  testando: `__verify_manual_optimization_support`. Para batch maior, só subindo
+  `--batch-size` até onde a placa aguentar.
+- **Early stopping automático no `val_mel`.** Os autores do Piper desaconselham
+  explicitamente, e o comentário no código diz por quê: o mel L1 satura cedo no
+  VITS enquanto as perdas adversariais continuam removendo artefatos audíveis. Um
+  early-stop nele dispararia bem antes de o áudio ficar limpo.
+
+### O que o Piper já faz sozinho
+
+- `validation_split = 0.1` — uma fatia do dataset fica de fora do treino, e é
+  dela que saem `val_mel` e `val_mos`. **`val_mel` subindo é sinal genuíno de
+  overfitting**, porque são frases suas que o modelo nunca treinou.
+- `save_top_k=5` em duas métricas — guarda os cinco melhores por `val_mel` e por
+  `val_mos`, então mesmo passando do ponto sobra um checkpoint bom para exportar.
+  Mas apaga os antigos: exporte `.onnx` ao longo do caminho.
+- `p_dropout = 0.1` no modelo, que já é uma regularização.
+
+### Se o v2 ainda decorar
+
+Na ordem: `--lr 5e-5`; depois um bloco 4 de gravações; depois `--batch-size 12`
+ou 16 se a VRAM permitir. Nessa ordem porque é a ordem do custo — a primeira é um
+flag, a última é uma hora de leitura.
+
+---
+
 ## Bônus: as gravações servem duas vezes
 
 A seção 9 do plano pede 150–200 gravações da sua voz para treinar o wake word.

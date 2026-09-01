@@ -213,8 +213,9 @@ py -m lab.finetune.train --name ideraldo --resume     # depois de interromper
 |---|---|---|
 | `--name` | `ideraldo` | nome do run e da voz |
 | `--base` | `pt_BR-dii-high` | `pt_BR-miro-high` é a alternativa |
-| `--epochs` | 2000 | ~15 s por época com 203 gravações |
-| `--batch-size` | 8 | baixe para 4 se faltar VRAM |
+| `--epochs` | 1000 | ~20 mil passos com 315 gravações |
+| `--batch-size` | 8 | baixe para 4 se faltar VRAM, suba se sobrar |
+| `--lr` | 1e-4 | metade do padrão do Piper, que é para treino do zero |
 | `--resume` | — | retoma com otimizador e época intactos |
 
 O preparo do checkpoint base roda sozinho na primeira vez

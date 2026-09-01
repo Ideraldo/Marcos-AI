@@ -59,7 +59,28 @@ def base_files(base: str) -> tuple[Path, Path]:
     return checkpoint, config
 
 
-def train(base: str, name: str, epochs: int, batch_size: int, resume: bool) -> None:
+#: Learning rate do gerador. O padrão do Piper é 2e-4, calibrado para treinar do
+#: zero com dezenas de milhares de amostras. Num fine-tune de meia hora de áudio
+#: essa taxa é agressiva: o modelo se afasta rápido demais dos pesos da base e
+#: passa a ajustar as poucas frases que tem, que é a definição de decorar. Metade
+#: disso preserva o que a base já sabe e deixa o timbre migrar mais devagar.
+FINETUNE_LR = 1e-4
+
+#: Acumular gradiente seria a forma barata de aumentar o batch efetivo sem gastar
+#: VRAM, mas o VITS treina com otimização manual (dois otimizadores, gerador e
+#: discriminador) e o Lightning recusa `accumulate_grad_batches` nesse modo:
+#: "__verify_manual_optimization_support". Para batch maior aqui só subindo
+#: `--batch-size` mesmo, até onde a placa aguentar.
+
+
+def train(
+    base: str,
+    name: str,
+    epochs: int,
+    batch_size: int,
+    resume: bool,
+    learning_rate: float = FINETUNE_LR,
+) -> None:
     checkpoint, config = base_files(base)
     run = OUTPUT / name
     run.mkdir(parents=True, exist_ok=True)
@@ -77,6 +98,7 @@ def train(base: str, name: str, epochs: int, batch_size: int, resume: bool) -> N
         "--data.espeak_voice", ESPEAK_VOICE,
         "--data.batch_size", str(batch_size),
         "--model.sample_rate", "22050",
+        "--model.learning_rate", str(learning_rate),
         "--trainer.max_epochs", str(epochs),
         "--trainer.default_root_dir", str(run),
         "--trainer.accelerator", "gpu",
@@ -89,7 +111,9 @@ def train(base: str, name: str, epochs: int, batch_size: int, resume: bool) -> N
     # the first time, your own interrupted run afterwards.
     start_from = latest_run_checkpoint(run) if resume else checkpoint
     command += ["--ckpt_path", str(start_from)]
+
     print(f"  partindo de: {start_from.name}")
+    print(f"  lr {learning_rate}  batch {batch_size}")
 
     print("  " + " ".join(command) + "\n")
     subprocess.run(command, check=True)
@@ -197,8 +221,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="fine-tune do Piper")
     parser.add_argument("--name", default="ideraldo", help="nome do run / da voz")
     parser.add_argument("--base", default="pt_BR-dii-high", help="voz base do fine-tune")
-    parser.add_argument("--epochs", type=int, default=2000)
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=1000,
+        help="com 315 gravacoes e batch efetivo 16, ~1000 epocas dao ~20 mil passos",
+    )
     parser.add_argument("--batch-size", type=int, default=8, help="baixe se faltar VRAM")
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=FINETUNE_LR,
+        help=f"learning rate do gerador (padrao {FINETUNE_LR}; o do Piper e 2e-4, para treino do zero)",
+    )
     parser.add_argument("--resume", action="store_true", help="retomar um treino interrompido")
     parser.add_argument("--export", action="store_true", help="so exportar o .onnx")
     parser.add_argument("--list", action="store_true", help="listar os checkpoints do run")
@@ -220,7 +255,14 @@ def main() -> None:
     elif args.export or args.epoch is not None or args.checkpoint:
         export(args.name, args.base, args.epoch, args.checkpoint, args.as_name)
     else:
-        train(args.base, args.name, args.epochs, args.batch_size, args.resume)
+        train(
+            args.base,
+            args.name,
+            args.epochs,
+            args.batch_size,
+            args.resume,
+            args.lr,
+        )
 
 
 if __name__ == "__main__":
