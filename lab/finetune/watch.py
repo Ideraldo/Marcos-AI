@@ -6,6 +6,11 @@ Roda num segundo terminal, ao lado do treino. A cada verificação olha o
 checkpoint mais recente e, se ele avançou 100 épocas desde o último export,
 gera um `.onnx` novo.
 
+O intervalo de verificação não precisa ser curto: cada marco de 100 épocas leva
+uns 50 minutos, então checar de 5 em 5 minutos já erra o alvo por poucos por
+cento. A verificação em si é só listar um diretório — o custo está no export, que
+acontece uma vez por marco.
+
 **Por que isso existe.** O `ModelCheckpoint` do Lightning guarda apenas os cinco
 melhores por métrica e vai apagando os antigos. No treino v1, quando fui
 arquivar, as épocas anteriores à 247 já não existiam — perdi o começo inteiro da
@@ -39,7 +44,7 @@ def watch(name: str, base: str, every: int, interval: int) -> None:
         raise SystemExit(f"{run} nao existe -- o treino ja comecou?")
 
     print(f"\n  observando {run}")
-    print(f"  exporta a cada {every} epocas, verificando de {interval}s em {interval}s")
+    print(f"  exporta a cada {every} epocas, verificando a cada {interval // 60} min")
     print("  Ctrl+C para parar (nao afeta o treino)\n")
 
     exported: set[int] = set()
@@ -76,7 +81,12 @@ def main() -> None:
     parser.add_argument("--name", default="ideraldo", help="nome do run em andamento")
     parser.add_argument("--base", default="pt_BR-dii-high", help="voz base, para copiar o config")
     parser.add_argument("--every", type=int, default=100, help="intervalo em epocas")
-    parser.add_argument("--interval", type=int, default=180, help="segundos entre verificacoes")
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=300,
+        help="segundos entre verificacoes (padrao 300; cada 100 epocas leva ~50 min)",
+    )
     args = parser.parse_args()
 
     try:

@@ -268,7 +268,7 @@ Segundo terminal, ao lado do treino. Exporta um `.onnx` a cada 100 épocas.
 | `--name` | `ideraldo` — o run em andamento |
 | `--base` | `pt_BR-dii-high` — de onde copiar o config |
 | `--every` | 100 épocas |
-| `--interval` | 180 s entre verificações |
+| `--interval` | 300 s (5 min) entre verificações |
 
 Existe porque o `ModelCheckpoint` guarda só os cinco melhores e apaga os antigos:
 no v1 as épocas anteriores à 247 sumiram antes de eu arquivar. Ctrl+C nele não
