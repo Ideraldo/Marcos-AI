@@ -18,7 +18,7 @@ from gateway.stt.stub import TextPassthroughSTT  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
-app = FastAPI(title="BMO gateway")
+app = FastAPI(title="Marcos gateway")
 
 
 def build_llm() -> LLMProvider:

@@ -11,7 +11,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class DeviceConfig:
-    device_id: str = os.getenv("DEVICE_ID", "bmo-01")
+    device_id: str = os.getenv("DEVICE_ID", "marcos-01")
     token: str = os.getenv("DEVICE_TOKEN", "dev-token")
     gateway_url: str = os.getenv("GATEWAY_URL", "ws://localhost:8000/ws")
     input_device: str | None = os.getenv("AUDIO_INPUT_DEVICE")

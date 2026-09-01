@@ -17,7 +17,7 @@ from common.messages import AudioEnd, SessionStart
 from common.serialization import decode, encode
 from device.config import config
 
-log = logging.getLogger("bmo.ws")
+log = logging.getLogger("marcos.ws")
 
 
 class GatewayClient:

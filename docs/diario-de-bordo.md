@@ -806,11 +806,10 @@ Próximo passo imediato:
 
 Em aberto:
 
-- Se 30 min bastam para generalizar
-- Qual tamanho de STT cabe na Pi (medir lá, testar whisper.cpp/sherpa-onnx)
-- Se o gateway deve re-transcrever com modelo maior quando a pergunta vai ao LLM
-- O nome do assistente no código (ainda "BMO", herdado do plano)
-- Confirmar id e preço do modelo de LLM na documentação oficial
+- Qual tamanho de STT cabe na Pi — decidido começar pelo mais rápido (D9), mas o
+  número só sai medindo lá
+- Se um modelo aberto de 8B dá conta de busca fundamentada (D11)
+- Qual época do fine-tune fica como definitiva
 
 Ainda não começou: roteador de intenções, alarmes locais, rosto, wake word, VPS,
 hardware.

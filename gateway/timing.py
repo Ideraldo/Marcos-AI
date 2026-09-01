@@ -10,7 +10,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-log = logging.getLogger("bmo.timing")
+log = logging.getLogger("marcos.timing")
 
 
 @dataclass

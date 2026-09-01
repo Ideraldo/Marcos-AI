@@ -31,7 +31,7 @@ from device.state import StateMachine  # noqa: E402
 from device.tts import PiperVoiceEngine  # noqa: E402
 from device.ws_client import GatewayClient  # noqa: E402
 
-log = logging.getLogger("bmo.device")
+log = logging.getLogger("marcos.device")
 
 
 async def read_line(prompt: str) -> str:
@@ -81,7 +81,7 @@ async def handle_incoming(client: GatewayClient, machine: StateMachine, voice, s
             # inteira. A final é a mesma coisa junta, só para a tela.
             if message.final:
                 continue
-            print(f"  bmo > {message.text}")
+            print(f"  marcos> {message.text}")
             elapsed = await speak(voice, speaker, message.text)
             if spoke_at is None:
                 spoke_at = elapsed
@@ -106,7 +106,7 @@ async def run() -> None:
 
     with Speaker(voice.sample_rate, config.output_device or None) as speaker:
         async with GatewayClient() as client:
-            print("BMO -- modo texto, voz local (fase 0). Ctrl+C para sair.\n")
+            print("Marcos -- modo texto, voz local (fase 0). Ctrl+C para sair.\n")
             while True:
                 text = (await read_line("voce: ")).strip()
                 if not text:

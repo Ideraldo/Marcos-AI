@@ -68,16 +68,6 @@ captura de áudio substitui só a entrada; nada do caminho já validado muda.
 
 ---
 
-## Em aberto
-
-- **Nome do assistente.** O código usa "BMO", herdado do plano, enquanto o
-  repositório se chama Marcos-AI. Renomear ou manter?
-- **LLM de produção.** O plano fixa `deepseek-v4-flash`; hoje roda Ollama local
-  em dev. Falta confirmar id e preço na documentação oficial antes de codar o
-  provedor de nuvem.
-
----
-
 ## D4 — Voz própria por fine-tune do Piper, não por clonagem zero-shot
 
 **Data:** 2026-08-31
@@ -186,3 +176,78 @@ Se a síntese roda na Pi, mandar áudio pronto pelo fio seria pagar duas vezes.
 
 **Medido:** primeiro chunk de áudio em 0,32 s depois do texto chegar, com a voz
 `pt_BR-ideraldo-medium` — dentro dos 150–400 ms da seção 11, com folga para a Pi.
+
+---
+
+## D8 — O assistente se chama Marcos
+
+**Data:** 2026-09-01
+**O plano diz:** o ultraplan o chama de "BMO" no título e nos exemplos.
+
+**O que mudou:** o nome no código passa a ser Marcos, alinhado ao repositório.
+`device_id` vira `marcos-01`, os loggers viram `marcos.*`, e o system prompt
+agora diz "Você é o Marcos".
+
+**Por quê:** o aparelho já responde falando, e ouvi-lo dizer "Sou o BMO" deixou a
+inconsistência concreta. Renomear agora custa uma varredura; depois de o nome
+aparecer em logs, configurações e gravações, custa mais.
+
+**Consequências:** o `DEVICE_ID` padrão mudou. Um `.env` antigo com `bmo-01`
+continua funcionando — é só um identificador —, mas convém atualizar.
+
+---
+
+## D9 — STT: começar pelo mais rápido e trocar se doer
+
+**Data:** 2026-09-01
+**A tensão:** o `small` acerta (9,0% de WER, 2,2% em comandos) e provavelmente
+não cabe no orçamento da Pi; o `base` cabe com folga e erra os comandos.
+
+**O que ficou:** começar com o mais rápido que for aceitável e só subir de
+tamanho se a qualidade doer no uso real. Medir na Pi antes de decidir em
+definitivo; testar whisper.cpp e sherpa-onnx, que são bem mais rápidos em ARM e
+podem tornar a escolha desnecessária.
+
+**Por quê:** é mais barato descobrir que um modelo pequeno bastava do que
+descobrir que o grande não cabia depois de construir em cima dele.
+
+**Sobre a divisão local/remoto:** quem decide não é o STT, é o **roteador de
+intenções**, e ele trabalha sobre texto — por isso o STT precisa ser local
+([D1](#d1--stt-e-tts-rodam-no-dispositivo-não-no-gateway)). O fluxo é o da seção
+5 do plano: o dispositivo transcreve, o roteador tenta casar a frase com uma
+intenção conhecida, e só manda para a VPS o que não casou.
+
+---
+
+## D10 — Sem VPS por enquanto; tudo local
+
+**Data:** 2026-09-01
+**O plano diz:** seção 2 recomenda comprar a VPS antes do hardware, porque é
+cancelável e entrega o número de latência real.
+
+**O que mudou:** adiado. O desenvolvimento segue inteiramente local.
+
+**Por quê:** nada do que falta construir depende dela. Roteador, alarmes locais,
+rosto e wake word são todos do lado do dispositivo. A VPS entra quando houver o
+que medir.
+
+**Consequência:** a Fase 5 continua sendo o primeiro gasto, quando chegar a hora.
+
+---
+
+## D11 — LLM open source, sem provedor de nuvem
+
+**Data:** 2026-09-01
+**O plano diz:** seção 6 escolhe `deepseek-v4-flash` via API.
+
+**O que mudou:** o projeto segue em modelo aberto, rodando local via Ollama. A
+interface `LLMProvider` continua sendo o ponto de troca, então migrar depois é
+escrever uma implementação nova e mudar `build_llm`.
+
+**Por quê:** preferência do usuário, e o Ollama já cobre o desenvolvimento.
+
+**Consequências:**
+- A busca fundamentada na internet, que motivou a escolha da API na seção 6,
+  continua sendo o teste difícil. Um modelo de 8B pode não dar conta.
+- Some a dependência de chave de API e o custo mensal.
+- Se a qualidade doer, a troca é localizada — não é reescrita.
