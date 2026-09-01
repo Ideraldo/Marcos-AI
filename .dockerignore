@@ -1,0 +1,23 @@
+# O contexto de build e a raiz do projeto (por causa de `common/`), entao sem
+# este arquivo o Docker empacota .venv e lab/models -- dezenas de GB enviados
+# ao daemon antes de a primeira linha do Dockerfile rodar.
+#
+# A imagem so precisa de: requirements-gateway.txt, common/, gateway/.
+
+.venv/
+.git/
+__pycache__/
+*.pyc
+
+# Modelos, gravacoes e treinos (D12): nada disso vai para o gateway.
+lab/
+device/
+tests/
+docs/
+.claude/
+
+# Segredos ficam de fora da imagem; o compose injeta por env_file.
+.env
+
+*.md
+!README.md

@@ -22,11 +22,12 @@ device/      runs on the PC now, on a Pi 5 later
   face/          web app served locally, state over WS
   ws_client.py   the single connection to the gateway
   state.py       state machine
-gateway/     runs in Docker on localhost now, on a VPS later
+gateway/     runs with uvicorn today, in Docker on a VPS later
   api/           WebSocket, token auth, the turn loop
   llm/           interface + swappable implementations
   tools/         spotify, home_assistant, web_search
   conversation/  history and context assembly
+  Dockerfile     gateway-only image; see requirements-gateway.txt (D15)
 common/      shared message schemas -- the contract, never logic
 lab/         bench for picking the STT and TTS engines (not production)
 docs/        the plan, the structure guide, the decision log, the diary
@@ -83,6 +84,33 @@ Swapping the LLM later touches one function, `build_llm` in `gateway/main.py`.
 .\.venv\Scripts\python.exe -m pytest
 ```
 
+## Phase 1 -- the gateway in a container
+
+Goal: containerised gateway, token auth, simulated link latency.
+Accepted when `docker compose up` brings everything up.
+
+Token auth and the simulated delay work today (`SIMULATED_LATENCY_MS` in `.env`;
+80 is wifi, 150 is 4G). **The container is written but unverified** -- it has
+never been run, because this machine has neither Docker nor WSL2. Treat the
+command below as untested:
+
+```powershell
+docker compose -f gateway/docker-compose.yml up --build
+python -m device.main      # unchanged: it still connects to ws://localhost:8000/ws
+```
+
+The image installs `requirements-gateway.txt`, not `requirements.txt`. After
+D13 the gateway holds no model at all -- `gateway/` and `common/` import
+fastapi, httpx, dotenv and the standard library -- so the full file would drag
+torch, transformers and the whole bench into a container that never uses them
+(D15). A new gateway dependency goes in that file, and only if `gateway/`
+imports it.
+
+Two things that only bite inside a container, both handled in the compose file:
+`localhost` means the container itself, so `OLLAMA_URL` is overridden with
+`host.docker.internal`; and that name only resolves on Docker Engine for Linux
+-- the VPS case -- because of the `extra_hosts` line.
+
 ## Choosing STT and TTS
 
 `lab/` is where engines are measured before becoming an implementation under
@@ -107,6 +135,10 @@ in `docs/voz-e-locutor.md`:
 ```
 
 ## What comes next
+
+**First, actually running the container.** Phase 1 is written and never
+executed; the acceptance criterion is one `docker compose up` away, and Docker
+is the plan for the VPS anyway.
 
 **Phase 2 -- local alarms and timers, with the intent router.** The core of
 replacing the Alexa, and the only part that has to survive an internet outage.

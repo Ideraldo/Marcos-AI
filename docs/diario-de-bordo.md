@@ -1043,6 +1043,70 @@ vira decisão.
 
 ---
 
+## Dia 5 (continuação) — A Fase 1 que parecia pronta
+
+Perguntei se a Fase 1 já estava implementada. A resposta honesta foi: **dois
+terços, e o terço que falta estava escrito mas nunca tinha sido executado.**
+
+Autenticação por token: feita. Latência simulada: feita. Gateway
+containerizado: o `Dockerfile` e o `docker-compose.yml` existiam desde cedo — e
+justamente por existirem, pareciam prontos. Mas o critério de aceite do plano é
+`docker compose up` subindo tudo, e não há registro em lugar nenhum de isso ter
+sido rodado uma vez sequer.
+
+Olhando os dois arquivos com atenção, eles não subiriam. Três problemas, e os
+três da mesma família: **decisões posteriores passaram por cima deles e ninguém
+voltou ali.**
+
+**1. O container não acharia o Ollama.** O `.env` diz
+`OLLAMA_URL=http://localhost:11434`. Dentro do container, `localhost` é o
+próprio container. Isso é o D11 (trocar o LLM por Ollama) atravessando um
+compose escrito antes dele.
+
+**2. A imagem instalaria o `requirements.txt` inteiro** — `torch`,
+`transformers`, `speechbrain`, `vosk`, `piper-tts[train]`. Vários GB para um
+processo que, depois do D13, não tem modelo nenhum. Rodei o levantamento das
+importações de `gateway/` e `common/` e o resultado foi minúsculo:
+
+```
+fastapi  httpx  dotenv  + biblioteca padrão
+```
+
+É só isso. Virou `requirements-gateway.txt`, e o `requirements.txt` passou a ser
+o ambiente de desenvolvimento, incluindo o outro por referência. [D15](decisions.md).
+
+**3. Não havia `.dockerignore`.** Esse é o que mais teria doído na prática. O
+contexto de build é a raiz do projeto — precisa ser, porque `common/` é o
+contrato compartilhado e tem que entrar na imagem. Sem ignorar nada, o Docker
+empacota `.venv` e `lab/models/` e manda tudo para o daemon **antes da primeira
+linha do Dockerfile rodar**. São os 32 GB do D12 viajando para construir uma
+imagem que não usa nenhum deles.
+
+De quebra, o processo rodava como root, o que é indiferente na minha mesa e não
+é indiferente numa VPS exposta. Agora tem usuário próprio e um `HEALTHCHECK` que
+bate no `/health` com o Python da própria imagem — a `python:3.12-slim` não tem
+curl.
+
+E `gateway/stt/` ainda estava no disco: o D13 apagou os `.py`, o git registrou,
+e a pasta vazia ficou para trás com um `__pycache__` dentro.
+
+### O que eu não consigo afirmar
+
+**Não rodei.** Esta máquina não tem Docker nem WSL2 — `wsl -l -v` responde que o
+subsistema não está instalado. Então o que existe agora é código escrito com
+cuidado, não comportamento observado, e está marcado assim no D15.
+
+Isso me incomoda menos do que o estado anterior, e por um motivo específico:
+antes, a Fase 1 *parecia* pronta porque os arquivos existiam. Agora ela está
+escrita e **declarada não verificada**. Arquivo que existe não é entrega — a
+diferença entre os dois é alguém ter rodado uma vez.
+
+*Lição para o vídeo: o pior tipo de dívida técnica não é o código feio. É o
+arquivo plausível que ninguém executou, porque ele passa em toda revisão visual
+e só falha no dia em que você precisa dele.*
+
+---
+
 ## Onde estamos agora
 
 **O Marcos me ouve, pensa e responde com a minha voz — sem eu digitar nada.** O
@@ -1068,9 +1132,15 @@ Fechado até aqui:
 | Queda de rede | reconexão com espera crescente (D14) | ficar mudo é o pior modo de falha |
 | VPS | adiada (D10) | nada do que falta depende dela |
 | Binários | fora do git (D12) | 32 GB, e o `.onnx` é a minha voz |
+| Imagem do gateway | só `requirements-gateway.txt` (D15) | sem STT, sobrou fastapi + httpx |
 
 **Fase 0 cumprida por inteiro, e além.** O critério era o loop em dois processos;
 temos LLM real, voz própria e o STT fora do stub.
+
+**Fase 1 escrita, não verificada.** Token e latência simulada funcionam. O
+container foi corrigido (D15) — imagem enxuta, `.dockerignore`, Ollama alcançável
+de dentro, usuário não-root — mas `docker compose up` **nunca rodou**: não há
+Docker nem WSL2 nesta máquina. O critério de aceite continua em aberto.
 
 Próximo marco: **Fase 2 — alarmes e timers locais, com o roteador de intenções.**
 É o núcleo da substituição da Alexa, a única parte que precisa sobreviver a uma
@@ -1089,6 +1159,7 @@ números estimados no [Dia 5](#dia-5--o-microfone-entrou-no-fio-e-o-fio-aprendeu
 
 Em aberto:
 
+- **Se o container sobe** — a Fase 1 está escrita e não executada (D15)
 - **Se tudo isso cabe na Pi** — nada foi medido lá ainda, nem o Whisper. O
   RTF do dispositivo já subiu de 0,43 para 0,6–0,9 só saindo da bancada para o
   código real. É a maior incerteza do projeto hoje.

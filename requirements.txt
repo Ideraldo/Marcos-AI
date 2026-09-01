@@ -1,8 +1,8 @@
+# Ambiente de desenvolvimento: tudo, os dois lados e a bancada.
+# A imagem do gateway NAO usa este arquivo -- ver requirements-gateway.txt.
+
 # gateway
-fastapi
-uvicorn[standard]
-websockets
-httpx
+-r requirements-gateway.txt
 
 # device
 sounddevice
@@ -10,9 +10,6 @@ numpy
 webrtcvad
 # webrtcvad ainda importa pkg_resources, removido no setuptools 81
 setuptools<81
-
-# shared
-python-dotenv
 
 # dev
 pytest

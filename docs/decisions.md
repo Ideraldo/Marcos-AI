@@ -367,3 +367,49 @@ histórico é outra decisão, e não foi tomada.
 **Verificado:** `tests/test_reconnect.py` sobe um gateway WebSocket real e o
 derruba no meio do turno. Em campo, matando o uvicorn entre dois turnos: o turno
 seguinte funcionou 2,7 s depois de o gateway voltar, sem religar nada.
+
+---
+
+## D15 — A imagem do gateway não instala o `requirements.txt`
+
+**Data:** 2026-09-01
+**O plano diz:** a Fase 1 entrega "gateway containerizado, autenticação por
+token, latência simulada", com aceite em `docker compose up` subindo tudo.
+
+**O que mudou:** as dependências do gateway saíram para
+`requirements-gateway.txt`, e é só ele que entra na imagem. O `requirements.txt`
+passa a ser o ambiente de desenvolvimento — os dois lados mais a bancada — e
+inclui o outro por referência.
+
+**Por quê:** o `Dockerfile` foi escrito quando o gateway ainda tinha STT. Depois
+de [D13](#d13--o-áudio-nunca-entra-no-fio-o-dispositivo-transcreve-antes-de-falar)
+ele não tem modelo nenhum: as importações de `gateway/` e `common/` são
+`fastapi`, `httpx`, `dotenv` e biblioteca padrão. Instalar o arquivo inteiro
+levaria `torch`, `transformers`, `speechbrain`, `vosk` e `piper-tts[train]` para
+dentro da imagem — vários GB para um processo que só fala HTTP e WebSocket, num
+container que um dia sobe numa VPS pequena.
+
+**Três coisas que estavam quebradas e não apareciam porque ninguém rodou:**
+
+- **O container não achava o Ollama.** O `.env` tem
+  `OLLAMA_URL=http://localhost:11434`, correto para o dispositivo e errado
+  dentro do container, onde `localhost` é ele mesmo. O compose agora sobrescreve
+  com `host.docker.internal`, e declara `host-gateway` em `extra_hosts` — o
+  Docker Desktop resolve esse nome sozinho, o Docker Engine em Linux (o caso da
+  VPS) não.
+- **Não havia `.dockerignore`.** O contexto de build é a raiz do projeto, porque
+  `common/` precisa entrar junto. Sem ignorar nada, o `.venv` e os modelos de
+  `lab/` iriam para o daemon antes de a primeira linha do Dockerfile rodar.
+- **O processo rodava como root.** Corrigido: usuário `marcos`, uid 1000.
+
+**Consequências:**
+- Uma dependência nova do gateway tem que ser adicionada em
+  `requirements-gateway.txt`, não no outro. A regra é literal: entra ali se
+  `gateway/` importa.
+- `gateway/stt/` sumiu do disco também — o D13 apagou os `.py` e a pasta ficou
+  para trás com um `__pycache__` dentro.
+
+**Não verificado:** `docker compose up` **não foi executado**. Esta máquina não
+tem Docker nem WSL2. O critério de aceite da Fase 1 continua em aberto, e o que
+está aqui é código escrito com cuidado, não comportamento observado. A primeira
+pessoa a rodar isso deve tratar como não testado.

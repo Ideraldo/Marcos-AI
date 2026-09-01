@@ -100,9 +100,13 @@ gateway/
   conversation/    histórico e montagem de contexto
   config.py        segredos e parâmetros — nunca saem do servidor
   main.py          entrypoint (uvicorn)
-  Dockerfile
+  Dockerfile       imagem enxuta: so requirements-gateway.txt (D15)
   docker-compose.yml
 ```
+
+Na raiz, ao lado deles: `requirements-gateway.txt` (o que a imagem instala) e
+`.dockerignore` (o contexto de build e a raiz, por causa de `common/` — sem
+ignorar, `.venv` e `lab/models/` viajariam junto).
 
 `llm/` e `tts/` seguem o mesmo padrão: `base.py` define a interface, os
 arquivos vizinhos são implementações intercambiáveis, e **nada fora do módulo

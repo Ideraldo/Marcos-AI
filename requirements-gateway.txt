@@ -1,0 +1,14 @@
+# O que o gateway precisa para rodar, e nada mais.
+#
+# Existe separado por causa de D13: com o STT no dispositivo, o gateway nao tem
+# mais nenhum modelo. Instalar o requirements.txt inteiro na imagem traria
+# torch, transformers, speechbrain e o resto da bancada -- varios GB para um
+# processo que so fala HTTP e WebSocket.
+#
+# Regra: uma dependencia so entra aqui se `gateway/` a importa.
+
+fastapi
+uvicorn[standard]
+websockets
+httpx
+python-dotenv

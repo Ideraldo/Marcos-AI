@@ -1,10 +1,29 @@
+# Sobe o gateway. O dispositivo continua fora do container: ele precisa do
+# microfone e da placa de som, e um dia ele e uma Pi noutra maquina.
+#
+#   docker compose -f gateway/docker-compose.yml up --build
+#
+# Depois: `python -m device.main`, que conecta em ws://localhost:8000/ws como
+# sempre. Trocar o gateway local pelo da VPS e trocar GATEWAY_URL, nada mais.
+
 services:
   gateway:
     build:
+      # A raiz do projeto, para `common/` caber no contexto.
       context: ..
       dockerfile: gateway/Dockerfile
     ports:
-      - "8000:8000"
+      - "${GATEWAY_PORT:-8000}:8000"
     env_file:
       - ../.env
+    environment:
+      # Dentro do container, `localhost` e o proprio container. O Ollama roda
+      # no host, entao o valor do .env (que o device usa e esta certo para ele)
+      # nao serve aqui. Na VPS, aponte OLLAMA_URL_DOCKER para onde o modelo
+      # realmente estiver.
+      OLLAMA_URL: ${OLLAMA_URL_DOCKER:-http://host.docker.internal:11434}
+    extra_hosts:
+      # Docker Desktop resolve isso sozinho; no Docker Engine em Linux -- que e
+      # o caso da VPS -- so existe com esta linha.
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
