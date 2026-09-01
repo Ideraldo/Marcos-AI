@@ -176,10 +176,16 @@ py -m lab.finetune.record
 | `--redo SPEC` | apaga para regravar: `7`, `1-10` ou `2,7,15` |
 | `--reset` | apaga tudo (pede confirmação digitada) |
 | `--from N` | começa da frase N |
+| `--silence MS` | silêncio que encerra a gravação (padrão 1600 ms) |
 | `--mic` `--speaker` | dispositivos |
 
 Retoma sempre de onde parou. Durante a gravação: **ENTER** grava, **p** pula,
 **q** sai. Recusa automaticamente take baixo demais ou saturado.
+
+A gravação encerra após 1600 ms de silêncio. O valor é generoso porque os
+trechos do bloco 3 têm pausa **dentro** deles, entre os dois períodos — com 700
+ms, que era o padrão antigo, a gravação cortava no ponto final do meio. Se ainda
+cortar, `--silence 2200`.
 
 Grava a 48 kHz (o máximo que o VAD aceita) e reamostra para 22050 com filtro
 band-limited. Saída em `lab/finetune/dataset/`.

@@ -27,8 +27,15 @@ py -m lab.finetune.record --reset     # apagar tudo e comecar de novo
 São 315 frases (ver "Quanto é suficiente" abaixo). O gravador retoma sempre de
 onde parou, então dá para fazer em várias sessões.
 
-Para sozinha quando você para de falar. Pode parar com `q` e continuar depois:
+Para sozinha após 1600 ms de silêncio. Pode parar com `q` e continuar depois:
 retoma de onde ficou. Recusa automaticamente takes baixos demais ou saturados.
+
+O limiar é generoso de propósito. Os trechos do bloco 3 têm dois ou três
+períodos, e a pausa natural depois de um ponto final passa fácil de um segundo —
+com os 700 ms que eu tinha posto no começo, a gravação encerrava no meio da
+frase e o modelo aprenderia a parar ali. Trocar um pouco de silêncio no fim do
+arquivo por não perder metade do texto é troca fácil: o treino ignora silêncio,
+mas não inventa o que faltou. Se ainda cortar, `--silence 2200`.
 
 Se as primeiras saírem ruins, `--redo 1-10` apaga só aquele intervalo e mantém o
 resto. `--reset` apaga tudo, e pede confirmação digitada — gravação é a parte

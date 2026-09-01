@@ -39,6 +39,14 @@ WAVS = ROOT / "wav"
 METADATA = ROOT / "metadata.csv"
 
 CAPTURE_RATE = 48_000  # what the VAD accepts
+
+#: Quanto silêncio encerra a gravação. Generoso de propósito: os trechos do
+#: bloco 3 têm dois ou três períodos, e a pausa natural depois de um ponto final
+#: ou de uma vírgula longa passa fácil de um segundo. Com 700 ms — o valor
+#: original — a gravação cortava no meio da frase, e o modelo aprenderia a parar
+#: ali. Trocar um pouco de silêncio no fim do arquivo por não perder metade do
+#: texto é troca fácil: o treino ignora silêncio, mas não inventa o que faltou.
+SILENCE_MS = 1600
 TARGET_RATE = 22_050  # what the piper medium/high voices train at
 
 
@@ -61,7 +69,7 @@ def write_metadata() -> int:
     return len(recorded)
 
 
-def capture(index: int, device: int | None) -> bool:
+def capture(index: int, device: int | None, silence_ms: int = SILENCE_MS) -> bool:
     text = SENTENCES[index - 1]
     print(f"\n  [{index:>3}/{len(SENTENCES)}]  {text}")
     answer = input("  ENTER para gravar, 'p' para pular, 'q' para sair: ").strip().lower()
@@ -70,10 +78,10 @@ def capture(index: int, device: int | None) -> bool:
     if answer == "p":
         return True
 
-    pcm = record_until_silence(device=device, rate=CAPTURE_RATE, silence_ms=700)
+    pcm = record_until_silence(device=device, rate=CAPTURE_RATE, silence_ms=silence_ms)
     if not pcm:
         print("  nao ouvi nada -- repetindo")
-        return capture(index, device)
+        return capture(index, device, silence_ms)
 
     samples = np.frombuffer(pcm, dtype=np.int16)
     peak = int(np.abs(samples).max())
@@ -81,10 +89,10 @@ def capture(index: int, device: int | None) -> bool:
 
     if peak < 1500:
         print(f"  BAIXO DEMAIS (pico {peak / 32768:.0%}) -- aproxime-se e repita")
-        return capture(index, device)
+        return capture(index, device, silence_ms)
     if peak > 32000:
         print(f"  SATURADO (pico {peak / 32768:.0%}) -- abaixe o ganho e repita")
-        return capture(index, device)
+        return capture(index, device, silence_ms)
 
     write_wav(take_path(index), resample_hq(samples, CAPTURE_RATE, TARGET_RATE).tobytes(), TARGET_RATE)
     print(f"  ok  {seconds:.1f}s  pico {peak / 32768:.0%}")
@@ -154,14 +162,14 @@ def status() -> None:
         print(f"  faltam: {missing[:12]}{' ...' if len(missing) > 12 else ''}")
 
 
-def review(index: int, device: int | None, speaker: int | None) -> None:
+def review(index: int, device: int | None, speaker: int | None, silence_ms: int = SILENCE_MS) -> None:
     path = take_path(index)
     if not path.exists():
         raise SystemExit(f"{path} nao existe")
     print(f'\n  [{index}] "{SENTENCES[index - 1]}"')
     play(path, device=speaker)
     if input("  regravar? (s/N): ").strip().lower() == "s":
-        capture(index, device)
+        capture(index, device, silence_ms)
         write_metadata()
 
 
@@ -178,6 +186,12 @@ def main() -> None:
         help="apagar frases para regravar: 7, 1-10 ou 2,7,15",
     )
     parser.add_argument("--from", dest="start", type=int, default=1, help="comecar da frase N")
+    parser.add_argument(
+        "--silence",
+        type=int,
+        default=SILENCE_MS,
+        help=f"ms de silencio que encerram a gravacao (padrao {SILENCE_MS}); aumente se cortar no meio",
+    )
     args = parser.parse_args()
 
     if args.status:
@@ -196,7 +210,7 @@ def main() -> None:
     print(f"microfone: {describe(device)}")
 
     if args.review:
-        review(args.review, device, ensure("output", args.speaker))
+        review(args.review, device, ensure("output", args.speaker), args.silence)
         return
 
     recorded = done()
@@ -210,7 +224,7 @@ def main() -> None:
     print("  A gravacao para sozinha quando voce para de falar.\n")
 
     for index in pending:
-        if not capture(index, device):
+        if not capture(index, device, args.silence):
             break
 
     total = write_metadata()
