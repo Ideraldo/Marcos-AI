@@ -251,3 +251,42 @@ escrever uma implementação nova e mudar `build_llm`.
   continua sendo o teste difícil. Um modelo de 8B pode não dar conta.
 - Some a dependência de chave de API e o custo mensal.
 - Se a qualidade doer, a troca é localizada — não é reescrita.
+
+---
+
+## D12 — Modelos e gravações ficam fora do repositório
+
+**Data:** 2026-09-01
+**O que ficou:** nada de binário grande no git. Versionamos código, os corpora de
+frases e os números medidos — o suficiente para refazer qualquer modelo.
+
+**Por quê:** são 32 GB fora do git contra 496 KB de histórico versionado. E há um
+motivo mais forte que tamanho: **o `.onnx` treinado é a voz do usuário**, e o
+dataset são 30 minutos da voz dele limpos e transcritos. Qualquer um dos dois
+clona a voz numa ferramenta moderna. O repositório é público.
+
+**O que existe hoje, e onde:**
+
+| Item | Tamanho | Reproduzível? |
+|---|---|---|
+| `lab/finetune/dataset/` | 79 MB | **Não** — é uma hora de leitura |
+| `lab/models/piper/*.onnx` | 1,3 GB | Sim, a partir do dataset |
+| `lab/models/piper_ckpt/` | 2,2 GB | Sim, baixando de novo |
+| `lab/finetune/runs/` | 28 GB | Sim, e não vale guardar |
+| `lab/finetune/arquivo/` | 364 MB | Não — gerações já apagadas do run |
+
+**O risco que fica em aberto:** o dataset existe só no disco do usuário. Perdê-lo
+custa regravar tudo. Backup privado resolve; publicar não é necessário para isso.
+
+**Se um dia for publicar**, as rotas avaliadas:
+
+- **GitHub Releases** — até 2 GB por arquivo, fora do histórico do git, bom para
+  "a voz final da versão N".
+- **Hugging Face** — feito para modelos, repositório privado grátis. É de lá que
+  vieram os checkpoints pt-BR do Piper.
+- **Git LFS** — evitar: 1 GB de cota grátis, e cada versão nova de um `.onnx` de
+  61 MB consome de novo.
+
+**Falta, e vale fazer antes de publicar qualquer coisa:** um manifesto versionado
+dizendo de que época veio cada `.onnx`, com quais hiperparâmetros e qual WER
+mediu. Hoje o nome do arquivo é a única pista.
