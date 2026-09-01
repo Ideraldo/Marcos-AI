@@ -32,6 +32,7 @@ Set-Alias py .\.venv\Scripts\python.exe
 | Exportar sozinho durante o treino | `py -m lab.finetune.watch --name X` |
 | Gravar mais e continuar sem recomeçar | `py -m lab.finetune.prepare --from-run X` |
 | Rodar o assistente | `py -m uvicorn gateway.main:app` + `py -m device.main` |
+| Testar o nível 0 sem gateway | `py -m device.main --text` (sem subir o gateway) |
 
 ---
 
@@ -346,9 +347,23 @@ py -m uvicorn gateway.main:app        # terminal 2
 py -m device.main                     # terminal 3
 ```
 
-Fase 0, modo texto: o que se digita vai pelo mesmo canal binário que levará PCM.
-**O Marcos responde falando**, com a voz treinada — o gateway manda o texto frase
-a frase e o dispositivo sintetiza ([D7](../../docs/decisions.md)).
+| Flag de `device.main` | Para quê |
+|---|---|
+| `--text` | digitar em vez de falar; não carrega o STT |
+| `--verbose` | log do STT, da captura e do que sobe para o LLM |
+
+O laço completo roda no dispositivo: microfone → VAD → STT → roteador. Nenhum
+áudio cruza a rede em nenhuma direção ([D13](../../docs/decisions.md)) — o que
+sobe é a frase transcrita, e só quando o roteador não resolve sozinho.
+
+**Timer, alarme e hora funcionam com o gateway desligado** ([D17](../../docs/decisions.md)).
+Para conferir isso, é só não subir o terminal 2:
+
+```powershell
+py -m device.main --text
+# voce: poe um timer de 5 segundos
+#   marcos> Timer de 5 segundos.   [nivel 0, local]
+```
 
 Variáveis relevantes em `.env`:
 
@@ -361,6 +376,9 @@ Variáveis relevantes em `.env`:
 | `LLM_PROVIDER` / `LLM_MODEL` | `ollama` / `llama3.1:8b` |
 | `LLM_TIMEOUT` | suba se o modelo local estiver sem GPU livre |
 | `AUDIO_INPUT_DEVICE` / `AUDIO_OUTPUT_DEVICE` | áudio do dispositivo |
+| `STT_MODEL` / `STT_COMPUTE_TYPE` / `STT_MODEL_DIR` | qual Whisper o dispositivo carrega |
+| `VAD_SILENCE_MS` / `VAD_AGGRESSIVENESS` | quanto silêncio encerra a fala |
+| `SCHEDULES_DB` | onde timers e alarmes ficam entre um boot e outro |
 
 > **Não rode o Ollama enquanto o fine-tune treina.** Os dois disputam a mesma
 > placa e o treino morre com `CUDA out of memory` — aconteceu. `ollama stop
