@@ -1,7 +1,10 @@
 """Device <-> gateway wire protocol (plan section 4).
 
 Single source of truth: neither side defines messages on its own.
-Control travels as JSON; audio travels as binary frames (PCM 16 kHz, 16-bit, mono).
+Control travels as JSON. Audio does not travel at all: depois das decisões D1 e
+D7 o dispositivo transcreve e sintetiza sozinho, e o que cruza a rede é sempre
+texto. O formato PCM continua aqui porque é o contrato interno do dispositivo --
+microfone, VAD e STT falam nele.
 """
 
 from __future__ import annotations
@@ -10,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
 
-# Audio format agreed by both ends.
+# Audio format spoken inside the device (mic -> VAD -> STT).
 SAMPLE_RATE = 16_000
 CHANNELS = 1
 SAMPLE_WIDTH = 2  # bytes (16-bit)
@@ -36,8 +39,15 @@ class SessionStart:
 
 
 @dataclass
-class AudioEnd:
-    type: Literal["audio_end"] = "audio_end"
+class Utterance:
+    """O que o usuário disse, já transcrito no dispositivo (D1).
+
+    Substitui os frames binários + ``audio_end`` do plano original: o STT roda
+    antes do fio, então o gateway recebe a frase pronta.
+    """
+
+    text: str
+    type: Literal["utterance"] = "utterance"
 
 
 @dataclass
@@ -88,7 +98,7 @@ class Error:
 #: uses this to rebuild the dataclass, so adding a message means adding it here.
 MESSAGES: dict[str, type] = {
     "session_start": SessionStart,
-    "audio_end": AudioEnd,
+    "utterance": Utterance,
     "tool_result": ToolResult,
     "state": StateMessage,
     "transcript": Transcript,

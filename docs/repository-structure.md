@@ -48,8 +48,8 @@ common/
   serialization.py   encode/decode JSON das mensagens de controle
 ```
 
-Se cada lado definisse a sua versão, um dia o gateway manda `audio_end` e o
-device ainda espera `end_audio` — e isso aparece na Pi, não no PC.
+Se cada lado definisse a sua versão, um dia o gateway manda `utterance` e o
+device ainda manda `audio_end` — e isso aparece na Pi, não no PC.
 
 `common/` é pequeno de propósito: **contrato, nunca lógica**. Se algo aqui só
 interessa a um dos lados, está no lugar errado.
@@ -62,7 +62,8 @@ interessa a um dos lados, está no lugar errado.
 device/
   activation/   o que ACORDA o aparelho: wake word, botão GPIO,
                 detecção de energia (seção 7)
-  audio/        captura, playback, VAD, escolha de device de I/O
+  audio/        captura (microfone + VAD), playback, escolha de I/O
+  stt/          transcrição local: faster-whisper, antes do fio (D13)
   router/       roteador de intenções (seção 5): decide se resolve
                 aqui ou manda para o gateway
   local/        timers, alarmes, lembretes — SQLite + agendador
@@ -71,7 +72,7 @@ device/
   tts/          síntese local: a voz própria, treinada em lab/finetune
   ws_client.py  a ÚNICA conexão com o mundo externo
   config.py     áudio e display por variável de ambiente
-  main.py       entrypoint do processo
+  main.py       entrypoint do processo (--text, --verbose)
 ```
 
 O fluxo lê de cima para baixo: `activation/` dispara → `audio/` captura →
@@ -93,7 +94,6 @@ o Chromium.
 ```
 gateway/
   api/             WebSocket + autenticação por token
-  stt/             base.py (Protocol) + implementações
   llm/             base.py (Protocol ProvedorLLM) + implementações
   tts/             base.py (Protocol) + cache de frases fixas
   tools/           spotify, home_assistant, web_search
@@ -104,7 +104,7 @@ gateway/
   docker-compose.yml
 ```
 
-`stt/`, `llm/` e `tts/` seguem o mesmo padrão: `base.py` define a interface, os
+`llm/` e `tts/` seguem o mesmo padrão: `base.py` define a interface, os
 arquivos vizinhos são implementações intercambiáveis, e **nada fora do módulo
 sabe qual está ativa**. É isso que permite trocar STT de nuvem por
 faster-whisper, ou a API do LLM por Ollama, sem tocar em `api/`.
@@ -175,6 +175,6 @@ Detalhes de uso em `lab/README.md`.
 
 E uma decisão que contraria o plano? → registre em [`decisions.md`](decisions.md)
 antes de escrever o código. A decisão **D1** já move STT e TTS do gateway para o
-dispositivo, então a leitura da seção 4 acima muda: `gateway/stt/` e
-`gateway/tts/` continuam existindo como interface, mas a implementação que
-importa passou a viver no lado do device.
+dispositivo, então a leitura da seção 4 acima muda: `gateway/tts/` continua
+existindo como interface sem uso no caminho principal, e `gateway/stt/` foi
+removido em **D13** — a transcrição acontece antes do fio, em `device/stt/`.

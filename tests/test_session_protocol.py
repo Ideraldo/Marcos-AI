@@ -44,16 +44,10 @@ class FakeSocket:
         self.binarios.append(data)
 
 
-class FakeSTT:
-    async def transcribe(self, audio):
-        return "pergunta"
-
-
 def build(pedacos: list[str]) -> tuple[Session, FakeSocket]:
     socket = FakeSocket()
     session = Session(
         websocket=socket,
-        stt=FakeSTT(),
         llm=FakeLLM(pedacos),
         expected_token="t",
     )
@@ -102,3 +96,35 @@ async def test_anuncia_que_esta_falando_antes_da_primeira_frase():
 
     tipos = [(m["type"], m.get("value") or m.get("final")) for m in socket.textos]
     assert tipos[0] == ("state", "speaking"), "o rosto precisa saber antes do audio comecar"
+
+
+class FakeReceiveSocket(FakeSocket):
+    """Entrega pacotes já no formato do Starlette, um por chamada."""
+
+    def __init__(self, pacotes: list[dict]) -> None:
+        super().__init__()
+        self._pacotes = list(pacotes)
+
+    async def receive(self) -> dict:
+        return self._pacotes.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_recebe_frase_transcrita_pelo_dispositivo():
+    """Depois de D1 o gateway lê texto: o STT rodou antes do fio."""
+    socket = FakeReceiveSocket([{"text": '{"type": "utterance", "text": " que horas sao? "}'}])
+    session = Session(websocket=socket, llm=FakeLLM([]), expected_token="t")
+
+    assert await session._receive_utterance() == "que horas sao?"
+
+
+@pytest.mark.asyncio
+async def test_recusa_audio_subindo_pelo_fio():
+    """Áudio do dispositivo para o gateway é regressão de D1, não um formato aceito."""
+    socket = FakeReceiveSocket(
+        [{"bytes": b"\x00\x01"}, {"text": '{"type": "utterance", "text": "oi"}'}]
+    )
+    session = Session(websocket=socket, llm=FakeLLM([]), expected_token="t")
+
+    assert await session._receive_utterance() == "oi"
+    assert [m["type"] for m in socket.textos] == ["error"]

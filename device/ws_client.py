@@ -3,21 +3,51 @@
 Rule of thumb from the plan: the device knows exactly one endpoint. Direct
 function calls between device and gateway code are forbidden -- migrating to the
 VPS must be nothing more than changing GATEWAY_URL.
+
+O link cai. Na mesa isso quase nunca acontece; numa Pi na prateleira, com o
+gateway do outro lado do Wi-Fi, é questão de quando. Por isso o cliente
+reconecta sozinho, com espera crescente, e o aparelho volta a ouvir em vez de
+morrer com traceback.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from typing import Any, AsyncIterator
 
 import websockets
+from websockets.exceptions import ConnectionClosed, InvalidHandshake
 
-from common.messages import AudioEnd, SessionStart
+from common.messages import Error, SessionStart, State, StateMessage, Utterance
 from common.serialization import decode, encode
 from device.config import config
 
 log = logging.getLogger("marcos.ws")
+
+#: Espera entre tentativas: dobra a cada falha, até o teto. O primeiro passo é
+#: curto porque a queda mais comum é o gateway reiniciando, e ele volta em
+#: segundos; o teto existe para não martelar um servidor que caiu de vez.
+BACKOFF_START = 0.5
+BACKOFF_CAP = 30.0
+
+
+class AuthRejected(Exception):
+    """O gateway recusou o session_start.
+
+    Não herda de OSError de propósito: herdando, ela cairia no `except` da
+    retentativa e um token errado viraria uma espera infinita em vez de um erro.
+    """
+
+
+class ConnectionLost(Exception):
+    """A conexão caiu no meio de um turno.
+
+    Reconectar devolve o socket, mas não o turno: o histórico da conversa vive
+    na `Session` do gateway, que morreu junto com a conexão. Quem chama precisa
+    saber que a resposta não vem, para voltar a ouvir em vez de esperar.
+    """
 
 
 class GatewayClient:
@@ -33,8 +63,7 @@ class GatewayClient:
         self._ws: Any = None
 
     async def __aenter__(self) -> "GatewayClient":
-        self._ws = await websockets.connect(self._url, max_size=None)
-        await self.send(SessionStart(device_id=config.device_id, token=config.token))
+        await self._connect()
         return self
 
     async def __aexit__(self, *exc: object) -> None:
@@ -42,28 +71,108 @@ class GatewayClient:
             await self._ws.close()
             self._ws = None
 
+    # -- conexão -----------------------------------------------------------
+
+    async def _connect(self) -> None:
+        """Conecta e faz o aperto de mão, tentando até conseguir.
+
+        Não desiste por contagem de tentativas: um aparelho de prateleira que
+        desiste precisa de alguém para religá-lo, e é justamente quando ninguém
+        está olhando que o Wi-Fi cai.
+        """
+        delay = BACKOFF_START
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                self._ws = await websockets.connect(self._url, max_size=None)
+                await self.send(SessionStart(device_id=config.device_id, token=config.token))
+                await self._await_ready()
+                if attempt > 1:
+                    log.info("reconectado ao gateway na tentativa %d", attempt)
+                return
+            except (OSError, ConnectionClosed, InvalidHandshake, ConnectionError) as exc:
+                self._ws = None
+                # Meio segundo de dispersão: sem isso, vários dispositivos
+                # voltando do mesmo apagão batem no gateway no mesmo instante.
+                wait = min(delay, BACKOFF_CAP) + random.uniform(0, 0.5)
+                log.warning(
+                    "gateway inacessivel (%s); nova tentativa em %.1fs", exc, wait
+                )
+                await asyncio.sleep(wait)
+                delay = min(delay * 2, BACKOFF_CAP)
+
+    async def _await_ready(self) -> None:
+        """Consome o IDLE que o gateway manda como aceite do session_start.
+
+        Ele faz parte do aperto de mão, não de nenhum turno. Deixá-lo na fila
+        fazia o primeiro turno lê-lo no meio do caminho e voltar para IDLE
+        justamente quando o gateway ia anunciar THINKING -- transição ilegal.
+        """
+        reply = decode(await self._ws.recv())
+        if isinstance(reply, Error):
+            # Token errado não melhora com espera; insistir só esconde o erro.
+            raise AuthRejected(f"gateway recusou a sessao: {reply.message}")
+        if not (isinstance(reply, StateMessage) and reply.value is State.IDLE):
+            raise ConnectionError(f"aperto de mao inesperado: {reply!r}")
+
+    # -- tráfego -----------------------------------------------------------
+
     async def send(self, message: object) -> None:
         await self._delay()
         await self._ws.send(encode(message))
 
-    async def send_audio(self, chunk: bytes) -> None:
-        await self._delay()
-        await self._ws.send(chunk)
+    async def _send_reconnecting(self, message: object) -> None:
+        """Manda, reconectando se preciso.
 
-    async def end_audio(self) -> None:
-        await self.send(AudioEnd())
+        A reconexão mora aqui, e não em `receive`, de propósito: enquanto o
+        gateway está fora do ar o aparelho continua ouvindo em vez de ficar
+        preso num laço de retentativa. A espera só acontece quando há algo de
+        verdade para entregar.
+        """
+        if self._ws is None:
+            await self._connect()
+            return await self.send(message)
+        try:
+            await self.send(message)
+        except ConnectionClosed:
+            log.warning("socket caiu antes de enviar; reconectando")
+            await self._connect()
+            await self.send(message)
+
+    async def send_utterance(self, text: str) -> None:
+        """Manda a frase já transcrita. Nenhum áudio sobe pelo fio (D1/D7).
+
+        Se o socket morreu enquanto o aparelho ouvia -- e ouvir é o que ele mais
+        faz --, reconecta antes de mandar. A frase acabou de ser dita e ainda
+        vale; é o único ponto onde a reconexão é invisível para quem falou.
+        """
+        await self._send_reconnecting(Utterance(text=text))
 
     async def receive(self) -> AsyncIterator[Any]:
-        """Yield decoded control messages and raw audio frames as they arrive."""
-        async for packet in self._ws:
-            await self._delay()
-            if isinstance(packet, bytes):
-                yield packet
-                continue
-            try:
-                yield decode(packet)
-            except ValueError as exc:
-                log.warning("dropping malformed message: %s", exc)
+        """Yield decoded control messages as they arrive.
+
+        Frames binários não deveriam mais existir em nenhuma direção; se algum
+        chegar, é gateway de versão antiga, e passar adiante deixa isso visível.
+        """
+        try:
+            async for packet in self._ws:
+                await self._delay()
+                if isinstance(packet, bytes):
+                    yield packet
+                    continue
+                try:
+                    yield decode(packet)
+                except ValueError as exc:
+                    log.warning("dropping malformed message: %s", exc)
+        except ConnectionClosed as exc:
+            self._ws = None
+            raise ConnectionLost("a resposta se perdeu com a conexao") from exc
+
+        # O gateway fechou de forma limpa (reinício, por exemplo). Para o turno
+        # o efeito é o mesmo de uma queda: a resposta não vem.
+        self._ws = None
+        raise ConnectionLost("o gateway encerrou a conexao")
 
     async def _delay(self) -> None:
         if self._latency:

@@ -255,6 +255,10 @@ Repetir sobre a sua voz:
 
 1. ~~Piper~~ · ~~MMS~~ · ~~whisper tiny/base/small~~ · ~~wav2vec2 pt~~ · ~~Vosk~~
 2. ~~Gravar a voz real e refazer a varredura de STT~~ — **feito, o `small` ganhou**
+   e virou produção em `device/stt/` (D13). No PC, com o modelo carregado:
+   frases de 2,5 a 3,8 s transcritas em ~2,2 s — RTF de 0,6 a 0,9, acima dos
+   0,43 medidos aqui. A bancada mede o motor; o dispositivo paga também o
+   `beam_size=5` e o resto do processo. É o número que a Pi tem que bater.
 3. ~~Ouvir as vozes do Piper~~ — jeff e cadu aprovadas; voz final sai do fine-tune
 3b. ~~Gravar o bloco 3 e retreinar~~ — v2 rodando com 30,9 min e lr 1e-4
 3c. **Ouvir a série exportada e rodar o generalize** — decide se 30 min bastam

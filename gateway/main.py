@@ -14,7 +14,6 @@ from gateway.api.session import Session  # noqa: E402
 from gateway.config import config  # noqa: E402
 from gateway.llm.base import LLMProvider  # noqa: E402
 from gateway.llm.ollama import OllamaProvider  # noqa: E402
-from gateway.stt.stub import TextPassthroughSTT  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
@@ -41,7 +40,6 @@ async def health() -> dict[str, str]:
 async def websocket_endpoint(websocket: WebSocket) -> None:
     session = Session(
         websocket=websocket,
-        stt=TextPassthroughSTT(),
         llm=build_llm(),
         expected_token=config.device_token,
     )

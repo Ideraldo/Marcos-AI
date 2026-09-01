@@ -920,11 +920,136 @@ treino saudável, de manhã contava "18h45" como erro, e agora condenou a melhor
 
 ---
 
+## Dia 5 — O microfone entrou no fio, e o fio aprendeu a cair
+
+Hoje foi o dia em que o Marcos deixou de depender de mim digitando.
+
+O stub de STT no gateway morreu. `device/audio/capture.py` grava, o VAD corta a
+fala, `device/stt/faster_whisper.py` transcreve, e o que sobe pela rede é uma
+mensagem `utterance` com a frase pronta. `gateway/stt/` foi deletado inteiro.
+Isso virou [D13](decisions.md), e é o D1 finalmente chegando no código: o áudio
+nunca entra no fio.
+
+**A primeira coisa que me pegou foi boba e cara.** Com o modelo em disco, o
+faster-whisper ainda saía consultando o Hugging Face na carga. Num aparelho que
+existe justamente para funcionar com a internet caída, isso é uma contradição
+com a razão de ser do projeto. `local_files_only=True` primeiro, download só
+como fallback explícito.
+
+E o número da bancada não sobreviveu ao mundo real:
+
+| | RTF |
+|---|---|
+| Bancada (`lab/`, dia 2) | 0,43 |
+| Dispositivo, PC, `small/int8` | 0,6 – 0,9 |
+
+Frases de 2,5 a 3,8 s levando ~2,2 s cada, e 2,0 s de carga do modelo. A bancada
+media o motor aquecido; o dispositivo paga também o `beam_size=5` e o resto do
+processo. Não é erro de ninguém — é a diferença entre medir um componente e medir
+um sistema. Mas é o número que a Pi vai ter que bater, e ele piorou.
+
+### O fio que ninguém tinha testado cair
+
+Depois vim para a reconexão, que não existia. Qualquer oscilação de Wi-Fi ou
+restart do gateway terminava o processo do dispositivo com traceback. Na minha
+mesa isso quase nunca acontece — mas o modo de falha de um aparelho de
+prateleira é ficar mudo até alguém notar, que é o pior que um assistente de voz
+consegue fazer.
+
+Virou [D14](decisions.md). Dois erros no caminho, e os dois foram do mesmo tipo:
+a coisa certa no lugar errado.
+
+**A retentativa estava dentro do `receive()`.** Parecia óbvio — caiu, reconecta
+ali mesmo. Só que o dispositivo ficava preso no laço de espera em vez de voltar
+a ouvir o microfone. Um aparelho travado esperando o gateway não é melhor que um
+aparelho morto. Movi a reconexão para o envio: `receive()` só avisa que caiu, e
+a reconexão acontece quando existe uma frase de verdade para entregar.
+
+**E o `AuthRejected` herdava de `OSError`.** Herdando, ele caía no `except` da
+retentativa — ou seja, um token errado virava espera infinita em vez de erro na
+cara. Bug perfeito: silencioso, e disfarçado de resiliência. O teste é o que
+fixa isso agora.
+
+`tests/test_reconnect.py` sobe um gateway WebSocket real e derruba ele no meio do
+turno. E em campo, matando o uvicorn entre dois turnos: o turno seguinte
+funcionou **2,7 s** depois de o gateway voltar, sem eu religar nada.
+
+### Ouvir os dois projetos conversando
+
+Fiquei bem feliz hoje. Rodar os dois lados ao mesmo tempo — o dispositivo que me
+ouve, o gateway que processa, e o dispositivo me respondendo com a minha própria
+voz — é a primeira vez que isso pareceu um aparelho e não um monte de scripts.
+Estou animado pra continuar.
+
+**Mas ficou uma preocupação, e ela é honesta:** será que isso roda mesmo no
+hardware? Tudo até aqui foi medido no PC. Pensei em emular para ter uma ideia
+antes. E, no pior dos casos, se não rodar, eu uso a Raspberry para outros
+projetos que já tenho em mente — o que não é derrota nenhuma, mas é bom ter dito
+em voz alta antes de comprar mais coisa.
+
+### A pergunta do fim do dia: e se ele traduzisse?
+
+Perguntei uma coisa que não estava no plano: dá para eu falar em português e o
+aparelho falar em inglês ou chinês, e vice-versa? Um tradutor portátil. E dá para
+funcionar sem internet?
+
+A resposta foi melhor do que eu esperava: **duas das três peças já existem.** O
+faster-whisper é multilíngue de nascença — o mesmo modelo que transcreve
+português transcreve inglês e chinês. O Piper é o oposto: uma voz por idioma,
+~60 MB cada, mas isso é só disco. Falta só a tradução no meio.
+
+Dois candidatos offline, e a comparação matou um deles na mesa:
+
+| | opus-mt (int8) | NLLB-200 600M (int8) |
+|---|---|---|
+| Disco, por direção | ~75 MB | ~600 MB (um só, 200 idiomas) |
+| RAM residente | ~100 MB | ~700–800 MB |
+| Latência estimada na Pi 5, frase curta | ~0,1–0,3 s | ~1,5–4 s |
+| Qualidade | boa nos pares comuns | melhor, sobretudo em pares raros |
+
+O que derruba o NLLB não é a RAM — 8 GB aguentam. É ele ser encoder-decoder
+autorregressivo: gera token a token, cada token atravessando 600M de parâmetros
+em quatro núcleos Cortex-A76 sem acelerador. **É exatamente o problema da
+Tentativa 2 do dia 1**, e o veredito de lá continua valendo: para voz, inviável.
+Somado ao Whisper na frente, uma frase de 4 s viraria uns 10 s até sair som.
+
+O opus-mt ganha por outro motivo, que é quase administrativo: ele roda em
+**CTranslate2**, o mesmo runtime que o `faster_whisper` já usa. Tem wheel para
+`aarch64` e usa o backend Ruy para GEMM int8 em ARM — não é caminho emulado. Se o
+Whisper roda na Pi, o CTranslate2 já está lá. Adicionar tradução vira adicionar
+um modelo, não uma stack — e numa Pi que o D1 já deixou apertada, isso pesa.
+
+**Dois detalhes que só apareceriam na prática, e que anotei antes de esquecer:**
+
+- **Os dois vão brigar por núcleos.** São quatro na Pi 5. O pipeline é serial
+  (STT termina, depois MT começa), então dá para dar os quatro a cada um na sua
+  vez — mas isso é configuração explícita de `intra_threads`, não default.
+- **Detecção de turno é o buraco de verdade.** Um tradutor de conversa precisa
+  saber quem está falando em qual idioma. Autodetecção do Whisper erra em frases
+  curtas ("ok", "no"). Botão físico — segura para falar, solta para ouvir — é o
+  que o Pocketalk faz, e é o que eu faria primeiro. É um problema de UX
+  disfarçado de problema de ML.
+
+Nada disso virou decisão. **Não medi nada na Pi ainda** — nem o Whisper, e o
+`RTF 1,3–2,2` do dia 2 continua sendo extrapolação. Registrar o NLLB aqui é o
+mesmo que fizemos com o `edge-tts`: teto de comparação, marcado como
+não-candidato no dispositivo. Se um dia o modo tradutor puder usar o gateway
+quando houver rede, ele volta à mesa.
+
+O tradutor entra como marco planejado depois da Fase 2, e o primeiro passo dele
+é um experimento em `lab/` no formato dos outros: opus-mt pt↔en sobre as minhas
+gravações reais, medindo latência e olhando a tradução. Aí vira número, e número
+vira decisão.
+
+---
+
 ## Onde estamos agora
 
-**O Marcos fala com a minha voz, e o loop roda ponta a ponta.** Digito uma
-pergunta, o gateway consulta o LLM, devolve a resposta frase por frase, e o
-dispositivo sintetiza e fala.
+**O Marcos me ouve, pensa e responde com a minha voz — sem eu digitar nada.** O
+microfone captura, o VAD corta, o faster-whisper transcreve no próprio
+dispositivo, o gateway consulta o LLM e devolve a resposta frase por frase, e o
+Piper sintetiza. Pela rede sobe e desce só texto. E se o fio cair no meio, o
+aparelho volta sozinho.
 
 A voz oficial é a **época 996** do fine-tune v2, com 30,9 min de áudio e learning
 rate 1e-4. Medida com síntese determinística: holdout 23,8% contra 14,6% da base.
@@ -935,31 +1060,47 @@ Fechado até aqui:
 |---|---|---|
 | Nome | Marcos (D8) | o repositório já se chamava assim |
 | Arquitetura | Dois processos, WebSocket | migrar = trocar URL |
-| Rede | só texto (D7) | alguns KB por interação, e fala offline |
+| Rede | só texto, nos dois sentidos (D7, D13) | alguns KB por interação, e fala offline |
 | LLM | open source via Ollama (D11) | preferência; `LLMProvider` é o ponto de troca |
-| STT | faster-whisper, tamanho a decidir na Pi (D9) | começar pelo rápido, trocar se doer |
+| STT | faster-whisper no dispositivo, tamanho a decidir na Pi (D9, D13) | nível 0 offline não existe sem isso |
 | TTS | Piper, voz própria treinada (D4) | RTF 0,05, offline, timbre próprio |
 | Locutor | ECAPA-TDNN | cadastro, não treino |
+| Queda de rede | reconexão com espera crescente (D14) | ficar mudo é o pior modo de falha |
 | VPS | adiada (D10) | nada do que falta depende dela |
 | Binários | fora do git (D12) | 32 GB, e o `.onnx` é a minha voz |
 
-**Fase 0 cumprida além do previsto.** O critério era o loop em dois processos;
-temos LLM real e voz própria. Falta só o STT sair do stub.
+**Fase 0 cumprida por inteiro, e além.** O critério era o loop em dois processos;
+temos LLM real, voz própria e o STT fora do stub.
 
 Próximo marco: **Fase 2 — alarmes e timers locais, com o roteador de intenções.**
 É o núcleo da substituição da Alexa, a única parte que precisa sobreviver a uma
 queda de internet, e o plano a coloca antes do rosto e do wake word de propósito.
 Não depende de hardware nem de VPS.
 
+Marco seguinte, planejado: **modo tradutor portátil.** Falar português e o
+aparelho falar inglês ou chinês, e o contrário. Duas das três peças já existem —
+o Whisper é multilíngue, o Piper tem voz por idioma. Falta a tradução no meio, e
+o candidato é **opus-mt em CTranslate2**, que é o runtime que o `faster_whisper`
+já usa. O NLLB-200 600M fica registrado como teto de comparação e
+**não-candidato no dispositivo** — autorregressivo demais para quatro núcleos
+ARM, o mesmo motivo que derrubou o LLM local no dia 1. Primeiro passo: um
+experimento em `lab/` medindo opus-mt pt↔en sobre as gravações reais. Detalhes e
+números estimados no [Dia 5](#dia-5--o-microfone-entrou-no-fio-e-o-fio-aprendeu-a-cair).
+
 Em aberto:
 
+- **Se tudo isso cabe na Pi** — nada foi medido lá ainda, nem o Whisper. O
+  RTF do dispositivo já subiu de 0,43 para 0,6–0,9 só saindo da bancada para o
+  código real. É a maior incerteza do projeto hoje.
+- Qual tamanho de STT cabe na Pi, quando houver Pi para medir (D9)
 - Backup privado do dataset, que hoje existe só num disco
-- Qual tamanho de STT cabe na Pi — só medindo lá
 - Se um modelo aberto de 8B dá conta de busca fundamentada (D11)
 - Se um bloco 4 de gravações vale a pena (o `prepare --from-run` já deixa barato)
+- Se o gateway deve re-transcrever com um modelo maior — a pergunta de D1 que
+  D13 deixou sem caminho, porque o áudio não sobe mais
 
-Ainda não começou: roteador de intenções, alarmes locais, rosto, wake word, VPS,
-hardware.
+Ainda não começou: roteador de intenções, alarmes locais, modo tradutor, rosto,
+wake word, VPS, hardware.
 
 ---
 ## Como continuar preenchendo

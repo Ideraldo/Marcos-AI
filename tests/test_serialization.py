@@ -6,7 +6,7 @@ on the Pi, not on the PC (repository-structure section 2).
 
 import pytest
 
-from common.messages import SessionStart, State, StateMessage, ToolCall, Transcript
+from common.messages import SessionStart, State, StateMessage, ToolCall, Transcript, Utterance
 from common.serialization import decode, encode
 
 
@@ -14,6 +14,7 @@ from common.serialization import decode, encode
     "message",
     [
         SessionStart(device_id="marcos-01", token="t"),
+        Utterance(text="que horas sao?"),
         StateMessage(value=State.THINKING),
         Transcript(text="que horas sao?", role="user"),
         ToolCall(id="1", name="criar_alarme", args={"hora": "07:00"}),
@@ -34,7 +35,7 @@ def test_unknown_type_is_rejected():
 
 def test_unexpected_field_is_rejected():
     with pytest.raises(ValueError, match="unexpected field"):
-        decode('{"type": "audio_end", "duration": 3}')
+        decode('{"type": "utterance", "text": "oi", "duration": 3}')
 
 
 def test_missing_type_is_rejected():

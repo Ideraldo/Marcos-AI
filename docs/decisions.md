@@ -290,3 +290,80 @@ custa regravar tudo. Backup privado resolve; publicar não é necessário para i
 **Falta, e vale fazer antes de publicar qualquer coisa:** um manifesto versionado
 dizendo de que época veio cada `.onnx`, com quais hiperparâmetros e qual WER
 mediu. Hoje o nome do arquivo é a única pista.
+
+---
+
+## D13 — O áudio nunca entra no fio: o dispositivo transcreve antes de falar
+
+**Data:** 2026-09-01
+**O plano diz:** seção 4 especifica frames binários de PCM subindo do
+dispositivo para o gateway, e `audio_end` fechando a fala.
+
+**O que mudou:** o dispositivo grava, corta pelo VAD, transcreve com
+faster-whisper e manda uma mensagem nova, `utterance`, com a frase pronta.
+`audio_end` e os frames binários deixaram de existir no protocolo.
+
+**Por quê:** é [D1](#d1--stt-e-tts-rodam-no-dispositivo-não-no-gateway) chegando
+no código. Enquanto o STT era um stub no gateway, o canal binário servia para
+carregar o texto digitado e exercitar o protocolo (D3). Com o STT real no
+dispositivo, manter os frames seria manter um caminho que ninguém usa — e o
+teste que garante que áudio não desce ([D7](#d7--pela-rede-sobe-só-texto-o-áudio-nasce-no-dispositivo))
+não tinha simétrico para a subida.
+
+**Consequências:**
+- `gateway/stt/` foi removido. A pergunta em aberto de D1 — o gateway
+  re-transcrever com um modelo maior — continua em aberto, mas ela precisaria do
+  áudio no fio, que é exatamente o que esta decisão tira. Se voltar, volta como
+  decisão nova e explícita.
+- O gateway não fala mais `listening`: quem sabe que está ouvindo é o
+  dispositivo, porque a captura é dele. A máquina de estados passou a ser
+  dirigida dos dois lados.
+- O modo texto virou `--text` em `device/main.py`, e continua útil: se a resposta
+  está errada com o texto digitado, o problema não é o microfone.
+- O modelo do STT carrega com `local_files_only` primeiro. Sem isso, o
+  faster-whisper consulta o Hugging Face na carga mesmo com o modelo em disco —
+  um aparelho que não abre o microfone com a internet caída contradiz a razão de
+  D1 existir.
+
+**Medido (PC, `small/int8`, CPU):** carga de 2,0 s; frases de 2,5 a 3,8 s
+transcritas em ~2,2 s cada — RTF entre 0,6 e 0,9, contra os 0,43 da bancada, que
+media com o modelo já aquecido e sem beam completo em disputa. Cabe no PC; na Pi
+é o número que decide entre `small` e `base` (D9).
+
+---
+
+## D14 — O dispositivo reconecta sozinho; o turno perdido não volta
+
+**Data:** 2026-09-01
+**O plano diz:** seção 2 trata o WebSocket como um canal que existe. Não diz o
+que acontece quando ele deixa de existir.
+
+**O que mudou:** `GatewayClient` reconecta com espera crescente (0,5 s dobrando
+até 30 s, com dispersão aleatória) e tenta indefinidamente. A queda no meio de
+um turno vira `ConnectionLost`, que o laço do dispositivo trata voltando a
+ouvir. Token recusado levanta `AuthRejected` e **não** entra em retentativa.
+
+**Por quê:** não havia nada. Qualquer queda — Wi-Fi oscilando, gateway
+reiniciando — terminava o processo do dispositivo com traceback. Na mesa isso
+quase nunca acontece; num aparelho de prateleira o modo de falha é ficar mudo
+até alguém notar, que é o pior que um assistente de voz pode fazer.
+
+**O que a reconexão não recupera:** a resposta daquele turno. O histórico da
+conversa vive na `Session` do gateway, que morre com a conexão; a sessão nova
+começa sem memória. Reconectar devolve o aparelho, não o assunto. Persistir
+histórico é outra decisão, e não foi tomada.
+
+**Duas escolhas que não são óbvias:**
+
+- **A retentativa mora no envio, não na recepção.** A primeira versão
+  reconectava dentro de `receive()`, antes de levantar `ConnectionLost` — e o
+  aparelho ficava preso no laço de espera em vez de voltar a ouvir. Agora
+  `receive()` só avisa que caiu, e a reconexão acontece quando há uma frase de
+  verdade para entregar.
+- **`AuthRejected` não herda de `OSError`.** Herdando, ela cairia no `except`
+  da retentativa e um token errado viraria espera infinita em vez de erro. Foi
+  exatamente o que aconteceu na primeira versão, e o teste é o que fixa isso.
+
+**Verificado:** `tests/test_reconnect.py` sobe um gateway WebSocket real e o
+derruba no meio do turno. Em campo, matando o uvicorn entre dois turnos: o turno
+seguinte funcionou 2,7 s depois de o gateway voltar, sem religar nada.

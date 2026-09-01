@@ -1,25 +1,32 @@
 """One WebSocket connection = one device session.
 
-The turn loop: collect audio frames until ``audio_end``, transcribe, ask the
-LLM, speak the answer back as it is generated. State messages drive the face on
-the device, so they are sent as the state actually changes, never in a batch at
-the end.
+The turn loop: wait for an ``utterance`` -- a frase que o dispositivo já
+transcreveu (D1) --, ask the LLM, speak the answer back as it is generated.
+State messages drive the face on the device, so they are sent as the state
+actually changes, never in a batch at the end.
+
+O gateway não vê áudio em nenhuma direção. Ele recebe texto e devolve texto;
+microfone, STT e síntese são assunto do dispositivo.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
-from typing import AsyncIterator
-
 from fastapi import WebSocket, WebSocketDisconnect
 
-from common.messages import Error, SessionStart, State, StateMessage, ToolCall, Transcript
+from common.messages import (
+    Error,
+    SessionStart,
+    State,
+    StateMessage,
+    ToolCall,
+    Transcript,
+    Utterance,
+)
 from common.serialization import decode, encode
 from gateway.conversation.history import Conversation
 from gateway.llm.base import LLMProvider
-from gateway.stt.base import SpeechToText
 from gateway.timing import Turn
 
 log = logging.getLogger("marcos.session")
@@ -33,16 +40,13 @@ class Session:
     def __init__(
         self,
         websocket: WebSocket,
-        stt: SpeechToText,
         llm: LLMProvider,
         expected_token: str,
     ) -> None:
         self._ws = websocket
-        self._stt = stt
         self._llm = llm
         self._expected_token = expected_token
         self._conversation = Conversation()
-        self._frames: asyncio.Queue[bytes | None] = asyncio.Queue()
 
     async def run(self) -> None:
         await self._ws.accept()
@@ -74,19 +78,15 @@ class Session:
         return True
 
     async def _turn(self) -> None:
-        """Collect one utterance, answer it, speak the answer."""
-        await self._collect_audio()
-        if self._frames.empty():
+        """Wait for one utterance, answer it, speak the answer."""
+        text = await self._receive_utterance()
+        if not text:
             return
 
         turn = Turn()
         await self._send(StateMessage(value=State.THINKING))
-
-        text = await self._stt.transcribe(self._drain())
-        turn.mark("stt")
-        if not text:
-            await self._send(StateMessage(value=State.IDLE))
-            return
+        # Eco do que foi entendido: o rosto mostra a transcrição, e quem lê o log
+        # do gateway vê a frase que gerou a resposta.
         await self._send(Transcript(text=text, role="user"))
 
         self._conversation.add_user(text)
@@ -97,16 +97,17 @@ class Session:
         await self._send(StateMessage(value=State.IDLE))
         turn.report()
 
-    async def _collect_audio(self) -> None:
-        """Buffer binary frames until the device says the utterance ended."""
-        await self._send(StateMessage(value=State.LISTENING))
+    async def _receive_utterance(self) -> str:
+        """Espera a próxima frase transcrita pelo dispositivo."""
         while True:
             packet = await self._ws.receive()
             if packet.get("type") == "websocket.disconnect":
                 raise WebSocketDisconnect(packet.get("code", 1000))
 
-            if (chunk := packet.get("bytes")) is not None:
-                await self._frames.put(chunk)
+            if packet.get("bytes") is not None:
+                # Depois de D1 o dispositivo transcreve antes de falar com o
+                # gateway. Áudio subindo é versão antiga do outro lado.
+                await self._send(Error(message="audio frames are not accepted; send an utterance"))
                 continue
 
             raw = packet.get("text")
@@ -117,14 +118,9 @@ class Session:
             except ValueError as exc:
                 await self._send(Error(message=str(exc)))
                 continue
-            if message.type == "audio_end":
-                await self._frames.put(None)
-                return
-            log.debug("ignoring %s while listening", message.type)
-
-    async def _drain(self) -> AsyncIterator[bytes]:
-        while (chunk := await self._frames.get()) is not None:
-            yield chunk
+            if isinstance(message, Utterance):
+                return message.text.strip()
+            log.debug("ignoring %s while waiting for an utterance", message.type)
 
     async def _speak_response(self, turn: Turn) -> str:
         """Stream the answer to the device, one sentence at a time.

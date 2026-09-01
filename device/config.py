@@ -9,19 +9,41 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _audio_device(name: str) -> str | int | None:
+    """Nome ou índice do dispositivo, como o sounddevice espera.
+
+    A variável de ambiente é sempre texto, mas o sounddevice trata texto como
+    trecho de nome e número como índice. Sem essa conversão, `AUDIO_INPUT_DEVICE=2`
+    viraria uma busca pelo nome "2" e não acharia nada.
+    """
+    value = os.getenv(name, "").strip()
+    if not value:
+        return None
+    return int(value) if value.lstrip("-").isdigit() else value
+
+
 @dataclass(frozen=True)
 class DeviceConfig:
     device_id: str = os.getenv("DEVICE_ID", "marcos-01")
     token: str = os.getenv("DEVICE_TOKEN", "dev-token")
     gateway_url: str = os.getenv("GATEWAY_URL", "ws://localhost:8000/ws")
-    input_device: str | None = os.getenv("AUDIO_INPUT_DEVICE")
-    output_device: str | None = os.getenv("AUDIO_OUTPUT_DEVICE")
+    input_device: str | int | None = _audio_device("AUDIO_INPUT_DEVICE")
+    output_device: str | int | None = _audio_device("AUDIO_OUTPUT_DEVICE")
     display_mode: str = os.getenv("DISPLAY_MODE", "window")  # window | kiosk
     # A voz do assistente. Fica fora do pacote de proposito: no PC ela vem da
     # bancada, na Pi virá de um diretório próprio, e nenhum dos dois deveria
     # estar escrito no código.
     tts_voice: str = os.getenv("TTS_VOICE", "pt_BR-ideraldo-medium")
     tts_voice_dir: str = os.getenv("TTS_VOICE_DIR", "lab/models/piper")
+    # STT local (D1). O tamanho segue aberto ate medir na Pi (D9): `small`
+    # acerta e `base` cabe, e trocar precisa custar uma variavel de ambiente.
+    stt_model: str = os.getenv("STT_MODEL", "small")
+    stt_compute_type: str = os.getenv("STT_COMPUTE_TYPE", "int8")
+    stt_model_dir: str = os.getenv("STT_MODEL_DIR", "lab/models/faster-whisper")
+    # Quanto silencio encerra a fala. A secao 11 orca 200-300 ms; na pratica
+    # cortar cedo demais decepa o fim da frase.
+    vad_silence_ms: int = int(os.getenv("VAD_SILENCE_MS", "700"))
+    vad_aggressiveness: int = int(os.getenv("VAD_AGGRESSIVENESS", "3"))
     simulated_latency_ms: int = int(os.getenv("SIMULATED_LATENCY_MS", "0"))
 
 
