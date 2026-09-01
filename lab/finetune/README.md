@@ -283,8 +283,8 @@ mais dados, é convite à memorização.
 
 ```powershell
 # a cada 100-200 epocas, em outro terminal
-py -m lab.finetune.train --export --epoch 300 --name ideraldo --as v2ep300
-py -m lab.finetune.generalize --voice pt_BR-v2ep300-medium --against pt_BR-dii-high
+py -m lab.finetune.watch --name ideraldo    # exporta sozinho a cada 100 epocas
+py -m lab.finetune.generalize --voice pt_BR-ideraldoep300-medium --against pt_BR-dii-high
 ```
 
 O padrão saudável é **as duas colunas caindo juntas**. O sinal de parada é a

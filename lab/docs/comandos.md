@@ -255,6 +255,25 @@ Dá para exportar **com o treino rodando**, em outro terminal — não usa a GPU
 O `.onnx` e o `.onnx.json` caem em `lab/models/piper/`, então a voz entra na
 bancada como qualquer outra.
 
+## Fine-tune — exportar sozinho durante o treino
+
+```powershell
+py -m lab.finetune.watch --name ideraldo
+```
+
+Segundo terminal, ao lado do treino. Exporta um `.onnx` a cada 100 épocas.
+
+| Parâmetro | Padrão |
+|---|---|
+| `--name` | `ideraldo` — o run em andamento |
+| `--base` | `pt_BR-dii-high` — de onde copiar o config |
+| `--every` | 100 épocas |
+| `--interval` | 180 s entre verificações |
+
+Existe porque o `ModelCheckpoint` guarda só os cinco melhores e apaga os antigos:
+no v1 as épocas anteriores à 247 sumiram antes de eu arquivar. Ctrl+C nele não
+afeta o treino.
+
 ## Fine-tune — verificar se decorou
 
 ```powershell
