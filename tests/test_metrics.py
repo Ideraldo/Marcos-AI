@@ -56,3 +56,17 @@ def test_untrained_keys_exclui_as_frases_do_corpus():
     keys = untrained_keys()
     assert "curta" not in keys and "acentos" not in keys
     assert set(keys) < set(PHRASES) and keys
+
+
+def test_sintese_deterministica_e_reprodutivel():
+    """Sem isso, comparar duas epocas mede ruido em vez de qualidade."""
+    import hashlib
+
+    from lab.tts.piper import PiperTTS
+
+    engine = PiperTTS("pt_BR-ideraldo-medium", deterministic=True)
+    digests = {
+        hashlib.md5(engine.synthesize("frase de controle")[0].tobytes()).hexdigest()
+        for _ in range(2)
+    }
+    assert len(digests) == 1, "a sintese de medicao voltou a variar entre rodadas"

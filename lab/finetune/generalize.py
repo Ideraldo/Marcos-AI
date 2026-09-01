@@ -36,7 +36,7 @@ OUT = Path(__file__).resolve().parent / "out" / "generalize"
 
 
 def synthesize(voice: str, keys: list[str]) -> dict[str, Path]:
-    engine = PiperTTS(voice)
+    engine = PiperTTS(voice, deterministic=True)
     engine.synthesize("aquecimento")  # carrega o modelo fora da medição
 
     paths = {}
@@ -128,7 +128,7 @@ def score_in_domain(voice: str, verbose: bool) -> float:
     from lab.finetune.corpus import SENTENCES
     from lab.stt.faster_whisper import FasterWhisper
 
-    engine = PiperTTS(voice)
+    engine = PiperTTS(voice, deterministic=True)
     engine.synthesize("aquecimento")
     stt = FasterWhisper("small")
 

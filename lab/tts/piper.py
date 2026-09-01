@@ -33,10 +33,20 @@ class PiperTTS:
     kind = "local"
     setup = "pip install piper-tts && python -m piper.download_voices <voz>"
 
-    def __init__(self, voice: str = VOICES[0]) -> None:
+    def __init__(self, voice: str = VOICES[0], deterministic: bool = False) -> None:
         self.voice = voice
         self.name = f"piper:{voice.removeprefix('pt_BR-')}"
         self._model = None
+        # Determinismo existe só para medir. O VITS amostra ruído a cada geração,
+        # então a mesma frase sai diferente toda vez -- ótimo para a voz soar
+        # viva, péssimo para comparar modelos. A mesma época 734 mediu 26,6% e
+        # 35,7% de WER em duas rodadas, e três vezes esse ruído produziu um
+        # diagnóstico que não se sustentou. Zerado, a geração é reprodutível.
+        self._config = None
+        if deterministic:
+            from piper.config import SynthesisConfig
+
+            self._config = SynthesisConfig(noise_scale=0.0, noise_w_scale=0.0)
 
     def _load(self):
         if self._model is None:
@@ -55,7 +65,7 @@ class PiperTTS:
         voice = self._load()
         buffer = io.BytesIO()
         with wave.open(buffer, "wb") as handle:
-            voice.synthesize_wav(text, handle)
+            voice.synthesize_wav(text, handle, syn_config=self._config)
         buffer.seek(0)
         with wave.open(buffer, "rb") as handle:
             rate = handle.getframerate()

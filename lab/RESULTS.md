@@ -68,7 +68,41 @@ já — era falta de material: 15,2 min e 203 frases.
 
 Corpus ampliado para 315 frases. **Dataset final: 315 gravações, 30,9 min.**
 
-### Fine-tune, segunda tentativa: em andamento
+### Fine-tune v2: fechado na época 996
+
+**A voz oficial do Marcos é a época 996**, exportada como
+`pt_BR-ideraldo-medium`. Avaliação do usuário: *"não ficou perfeito, mas está
+convincente"*.
+
+Comparação entre épocas, com **síntese determinística** (ver o alerta abaixo).
+Base `pt_BR-dii-high`: 14,6% em todas as rodadas.
+
+| Época | Corpus | Holdout | Distância |
+|---|---|---|---|
+| 531 | 13,8% | 25,7% | +11,9% |
+| 734 | 15,7% | 29,3% | +13,6% |
+| 859 | 15,6% | 28,4% | +12,8% |
+| 933 | 10,5% | 27,5% | +17,0% |
+| **996** | 14,6% | **23,8%** | **+9,2%** |
+
+A época final ganhou nos dois critérios. Treinar até o fim valeu — e não houve
+memorização, apesar de um sinal isolado na 933.
+
+> ⚠️ **A medição estava mentindo, pela terceira vez.** Antes do determinismo, a
+> **mesma** época 734 mediu 26,6% e 35,7% de holdout em duas rodadas — nove
+> pontos sem nada ter mudado no modelo. Esse ruído chegou a produzir um veredito
+> de "DECOROU" para a época 996, que é justamente a melhor.
+>
+> A causa é o VITS amostrar ruído a cada geração: ótimo para a voz soar viva,
+> péssimo para comparar. `PiperTTS(..., deterministic=True)` zera `noise_scale` e
+> `noise_w_scale`, e o `generalize` passou a usar isso sempre. A prova de que
+> funcionou está na coluna da base: 14,6% em todas as cinco rodadas, contra
+> 14,6–23,6% antes.
+>
+> Só medir com determinismo. Ouvir, com o ruído normal — é ele que faz a voz
+> soar viva.
+
+### Fine-tune v2: o caminho até lá
 
 | | v1 (descartado) | v2 |
 |---|---|---|
