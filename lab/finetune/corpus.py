@@ -14,6 +14,7 @@ your pauses and your mood, so a bored reading gives a bored voice.
 from __future__ import annotations
 
 from lab.finetune.corpus_long import LONGAS
+from lab.finetune.corpus_paragrafos import PARAGRAFOS
 
 DOMINIO = [
     "Timer de dez minutos.",
@@ -121,4 +122,4 @@ FONETICA = [
 #: The index of a sentence IS the name of its wav file, so this list may only
 #: ever grow at the end. Reordering or inserting silently pairs old recordings
 #: with new text, and the model learns to say the wrong words.
-SENTENCES: list[str] = DOMINIO + FONETICA + LONGAS
+SENTENCES: list[str] = DOMINIO + FONETICA + LONGAS + PARAGRAFOS

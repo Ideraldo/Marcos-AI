@@ -22,7 +22,7 @@ py -m lab.finetune.record --redo 1-10  # apagar as 10 primeiras e regravar
 py -m lab.finetune.record --reset     # apagar tudo e comecar de novo
 ```
 
-São 203 frases (ver "Quanto é suficiente" abaixo). O gravador retoma sempre de
+São 315 frases (ver "Quanto é suficiente" abaixo). O gravador retoma sempre de
 onde parou, então dá para fazer em várias sessões.
 
 Para sozinha quando você para de falar. Pode parar com `q` e continuar depois:
@@ -42,19 +42,40 @@ carrega para dentro do modelo qualquer artefato que tiver.
 
 ### Quanto é suficiente
 
-O corpus tem 203 frases em dois blocos:
+O corpus tem 315 frases em três blocos:
 
 | Bloco | Frases | Áudio | O que é |
 |---|---|---|---|
 | 1 (1–95) | 95 | ~5 min | domínio do assistente + varredura fonética, frases curtas |
-| 2 (96–203) | 108 | ~12 min | frases longas, com vírgula, subordinada e respiração no meio |
+| 2 (96–203) | 108 | ~10 min | frases longas, com vírgula, subordinada e respiração no meio |
+| 3 (204–315) | 112 | ~15 min | trechos de dois ou três períodos, 10–15 s cada |
 
-O bloco 1 rendeu menos áudio do que parecia: 95 arquivos, mas só 5 minutos. O
-que falta num fine-tune não é quantidade de arquivos, é **minutos**. Por isso o
-bloco 2 é de frases longas — rende o dobro de áudio com a mesma paciência, e
-carrega prosódia que frase curta não tem.
+**Os blocos 2 e 3 nasceram de erros de estimativa, e vale registrar os dois.**
 
-Os dois juntos dão uns **17 minutos**, que é onde o timbre fica convincente.
+O bloco 1 rendeu 95 arquivos e só 5 minutos: o que falta num fine-tune não é
+quantidade de arquivos, é **minutos**.
+
+O bloco 3 nasceu de um erro maior. Com os 15 minutos dos blocos 1 e 2, o treino
+**decorou**: na época 318 o WER do corpus tinha caído para 11,3% enquanto o de
+texto novo ficava parado em 39,7%. O modelo estava ficando ótimo em dizer
+exatamente aquelas frases e nada melhor em ler qualquer outra coisa. Não era
+falta de épocas — eram 14.828 passos já — era falta de material para generalizar.
+
+### Por que trechos de 10–15 s, e não parágrafos
+
+Trecho longo rende mais minuto por ENTER apertado. Mas existe um teto:
+
+- **O padding.** O `collate` do Piper preenche todas as amostras do batch até a
+  mais longa. Um trecho de 30 s força os outros sete do batch a 30 s — VRAM
+  desperdiçada numa placa de 6 GB, e computação gasta em silêncio.
+- **Na inferência o Piper divide por sentença de qualquer jeito.** Treinar em
+  parágrafos ensina uma prosódia longa que ele nunca vai usar.
+
+Dez a quinze segundos é onde se ganha minuto sem pagar nenhum dos dois preços. E
+mantém muitas amostras distintas, que é o que ensina começo e fim de frase.
+
+Não há filtro de comprimento no Piper — trechos longos não seriam descartados, só
+sairiam caros.
 
 ## 2. Treinar
 
