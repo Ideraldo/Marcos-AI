@@ -113,9 +113,14 @@ def diagnose(in_domain: float, holdout: float, base_holdout: float | None) -> No
         print("     e compare a serie, que e o que responde 'melhorou ou piorou'.")
 
 
-#: Frases do corpus usadas como referência "dentro do domínio". Poucas, porque
-#: o objetivo é comparar com o holdout, não medir o corpus inteiro.
-IN_DOMAIN_KEYS = [0, 30, 60, 100, 140, 180]
+#: Frases do corpus usadas como referência "dentro do domínio", espalhadas pelos
+#: três blocos.
+#:
+#: Eram seis, e seis é pouco: o VITS sintetiza com amostragem estocástica, e duas
+#: medições do mesmo modelo deram 17,4% e 26,9% — variação suficiente para virar
+#: o diagnóstico de lado. Vinte frases custam meio minuto a mais e tiram a
+#: decisão das mãos do acaso.
+IN_DOMAIN_KEYS = [0, 12, 25, 40, 55, 70, 85, 96, 115, 135, 155, 175, 195, 210, 230, 250, 270, 290, 300, 310]
 
 
 def score_in_domain(voice: str, verbose: bool) -> float:

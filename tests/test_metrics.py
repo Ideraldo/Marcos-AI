@@ -29,3 +29,20 @@ def test_case_accents_and_punctuation_are_ignored():
 
 def test_real_error_is_still_counted():
     assert wer("acende a luz do quarto", "apaga a luz do quarto") == pytest.approx(0.2)
+
+
+def test_hour_marker_matches_spoken_form():
+    """"18h45" e "dezoito e quarenta e cinco" sao a mesma resposta."""
+    assert wer(
+        "Faltam vinte e sete minutos para as dezoito e quarenta e cinco.",
+        "Faltam 27 minutos para as 18h45.",
+    ) == 0.0
+
+
+def test_thousands_separator_is_not_two_numbers():
+    assert normalize("R$ 2.300").endswith("dois mil e trezentos")
+    assert "dois trezentos" not in normalize("R$ 2.300")
+
+
+def test_decimal_comma_becomes_virgula():
+    assert "virgula" in normalize("1249,90")

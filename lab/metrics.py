@@ -11,11 +11,14 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from lab.numbers import spell_digits
+from lab.numbers import normalize_numeric_formats, spell_digits
 
 
 def normalize(text: str) -> str:
-    text = unicodedata.normalize("NFD", text.lower())
+    # Antes de tirar a pontuação: ponto e vírgula ainda significam algo dentro
+    # de um número, e perdê-los inventa erro que ninguém ouviria.
+    text = normalize_numeric_formats(text.lower())
+    text = unicodedata.normalize("NFD", text)
     text = "".join(c for c in text if unicodedata.category(c) != "Mn")
     text = re.sub(r"[^\w\s]", " ", text)
     # "10 minutos" and "dez minutos" are the same answer to this assistant.

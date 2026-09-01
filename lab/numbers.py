@@ -55,3 +55,20 @@ def spell_digits(text: str) -> str:
         return spell(int(digits))
 
     return re.sub(r"\d+", replace, text)
+
+
+def normalize_numeric_formats(text: str) -> str:
+    """Põe as convenções numéricas do português na mesma forma antes de soletrar.
+
+    O Whisper escreve "18h45" e "R$ 2.300" onde a referência diz "dezoito e
+    quarenta e cinco" e "dois mil e trezentos". Sem tratar isso, a pontuação some
+    junto com os pontos e vírgulas e sobra "dezoitohquarenta" ou "dois trezentos"
+    — erros que a métrica conta e que ninguém escutando notaria.
+    """
+    # Separador de milhar: 2.300 -> 2300, 1.249.999 -> 1249999
+    text = re.sub(r"\b(\d{1,3}(?:\.\d{3})+)\b", lambda m: m.group().replace(".", ""), text)
+    # Vírgula decimal: 1249,90 -> 1249 vírgula 90
+    text = re.sub(r"(\d),(\d)", r"\1 vírgula \2", text)
+    # Marcador de hora: 18h45 -> 18 e 45, 7h -> 7
+    text = re.sub(r"(\d)\s*[hH]\s*(\d)", r"\1 e \2", text)
+    return re.sub(r"(\d)\s*[hH]\b", r"\1", text)
