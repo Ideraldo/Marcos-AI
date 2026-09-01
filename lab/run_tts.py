@@ -28,11 +28,28 @@ def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
+def untrained_keys() -> list[str]:
+    """As frases da bancada que NÃO estão no corpus do fine-tune.
+
+    Duas das sete — `curta` e `acentos` — foram gravadas para treinar a voz.
+    Julgar um modelo treinado por elas o lisonjeia, porque é exatamente nelas
+    que um modelo que decorou vai bem. Para as outras vozes isso é indiferente;
+    para a voz própria, é a diferença entre avaliar e se enganar.
+    """
+    from lab.finetune.corpus import SENTENCES
+
+    corpus = {sentence.strip().lower() for sentence in SENTENCES}
+    return [key for key, text in PHRASES.items() if text.strip().lower() not in corpus]
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="TTS bench")
     parser.add_argument("--engine", required=True, choices=sorted(ENGINES))
     parser.add_argument("--voice", help="engine-specific voice/model id")
-    parser.add_argument("--phrase", default="all", help=f"{'|'.join(PHRASES)}|all")
+    parser.add_argument(
+        "--phrase",
+        default="all",
+        help=f"{'|'.join(PHRASES)}|all|novas (novas = so as que nao estao no corpus do fine-tune)",
+    )
     parser.add_argument(
         "--text",
         help="falar um texto qualquer em vez do conjunto fixo (use aspas)",
@@ -63,7 +80,12 @@ def main() -> None:
         phrases = {"texto": args.text}
         keys = ["texto"]
     else:
-        keys = list(PHRASES) if args.phrase == "all" else [args.phrase]
+        if args.phrase == "all":
+            keys = list(PHRASES)
+        elif args.phrase == "novas":
+            keys = untrained_keys()
+        else:
+            keys = [args.phrase]
 
     # Load the model on a throwaway phrase. Otherwise the first row carries the
     # startup cost and looks like the engine is slow -- on the Pi the model is

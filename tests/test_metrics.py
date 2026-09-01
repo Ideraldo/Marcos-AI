@@ -46,3 +46,13 @@ def test_thousands_separator_is_not_two_numbers():
 
 def test_decimal_comma_becomes_virgula():
     assert "virgula" in normalize("1249,90")
+
+
+def test_untrained_keys_exclui_as_frases_do_corpus():
+    """A bancada tem duas frases que viraram material de treino da voz propria."""
+    from lab.phrases import PHRASES
+    from lab.run_tts import untrained_keys
+
+    keys = untrained_keys()
+    assert "curta" not in keys and "acentos" not in keys
+    assert set(keys) < set(PHRASES) and keys
