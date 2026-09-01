@@ -68,6 +68,7 @@ device/
   local/        timers, alarmes, lembretes — SQLite + agendador
   face/         o rosto: HTML/CSS/JS servido localmente
   state.py      IDLE → LISTENING → THINKING → SPEAKING
+  tts/          síntese local: a voz própria, treinada em lab/finetune
   ws_client.py  a ÚNICA conexão com o mundo externo
   config.py     áudio e display por variável de ambiente
   main.py       entrypoint do processo

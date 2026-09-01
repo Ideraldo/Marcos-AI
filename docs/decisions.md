@@ -158,3 +158,31 @@ mil.
 - Early stopping automático segue descartado, seguindo o aviso dos autores do
   Piper: o mel L1 satura cedo enquanto as perdas adversariais ainda removem
   artefatos audíveis.
+
+---
+
+## D7 — Pela rede sobe só texto; o áudio nasce no dispositivo
+
+**Data:** 2026-09-01
+**O plano diz:** seção 4 especifica frames binários de TTS indo do gateway para o
+dispositivo.
+
+**O que mudou:** o gateway envia a resposta como texto, uma frase por vez
+(`Transcript` com `final=false`), e o dispositivo sintetiza e toca. Nenhum áudio
+atravessa a rede em nenhuma direção — no sentido dispositivo→gateway isso ainda
+está pendente, junto com o STT local.
+
+**Por quê:** é a consequência prática de [D1](#d1--stt-e-tts-rodam-no-dispositivo-não-no-gateway).
+Se a síntese roda na Pi, mandar áudio pronto pelo fio seria pagar duas vezes.
+
+**Consequências:**
+- Uma interação custa alguns KB em vez dos ~0,25 MB estimados na seção 12.
+- O aparelho fala com a internet caída, que é requisito para confirmar timer e
+  alarme.
+- `gateway/tts/` continua existindo como interface, mas sem uso no caminho
+  principal. A implementação que vale mora em `device/tts/`.
+- O streaming por frase foi preservado e virou teste: `tests/test_session_protocol.py`
+  falha se alguém voltar a mandar bytes ou a esperar a resposta inteira.
+
+**Medido:** primeiro chunk de áudio em 0,32 s depois do texto chegar, com a voz
+`pt_BR-ideraldo-medium` — dentro dos 150–400 ms da seção 11, com folga para a Pi.

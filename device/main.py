@@ -11,15 +11,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+import time
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from common.messages import (  # noqa: E402
-    CHANNELS,
-    SAMPLE_RATE,
-    SAMPLE_WIDTH,
     Error,
     State,
     StateMessage,
@@ -27,7 +25,10 @@ from common.messages import (  # noqa: E402
     ToolResult,
     Transcript,
 )
+from device.audio.playback import Speaker  # noqa: E402
+from device.config import config, voice_path  # noqa: E402
 from device.state import StateMachine  # noqa: E402
+from device.tts import PiperVoiceEngine  # noqa: E402
 from device.ws_client import GatewayClient  # noqa: E402
 
 log = logging.getLogger("bmo.device")
@@ -38,14 +39,28 @@ async def read_line(prompt: str) -> str:
     return await asyncio.to_thread(input, prompt)
 
 
-async def handle_incoming(client: GatewayClient, machine: StateMachine) -> None:
-    """Apply everything the gateway sends: state, text, audio, tool calls."""
-    audio_bytes = 0
-    started = False  # the session-start IDLE must not end the turn
+async def speak(voice, speaker, text: str) -> float:
+    """Sintetiza e toca, fora do laço de eventos.
+
+    Piper e a placa de som bloqueiam a thread. Rodar isso direto no laço travaria
+    o WebSocket enquanto o aparelho fala — e é justamente enquanto ele fala que
+    precisa continuar ouvindo, porque o barge-in depende disso (plan section 1).
+    """
+    started = time.perf_counter()
+    await asyncio.to_thread(speaker.play, voice.synthesize(text))
+    return time.perf_counter() - started
+
+
+async def handle_incoming(client: GatewayClient, machine: StateMachine, voice, speaker) -> None:
+    """Aplica o que o gateway manda: estado, texto para falar, chamadas de ferramenta."""
+    started = False  # o IDLE do início de sessão não encerra o turno
+    spoke_at = None
 
     async for message in client.receive():
         if isinstance(message, bytes):
-            audio_bytes += len(message)
+            # Depois da decisão D1 o gateway não manda mais áudio. Se chegar,
+            # é versão antiga do outro lado -- melhor dizer do que ignorar.
+            print("  [aviso: recebi audio do gateway; a sintese agora e local]")
             continue
 
         if isinstance(message, StateMessage):
@@ -54,18 +69,27 @@ async def handle_incoming(client: GatewayClient, machine: StateMachine) -> None:
             if message.value is not State.IDLE:
                 started = True
             elif started:
-                if audio_bytes:
-                    seconds = audio_bytes / (SAMPLE_RATE * SAMPLE_WIDTH * CHANNELS)
-                    print(f"  [audio: {audio_bytes} bytes, {seconds:.1f}s]")
-                return  # turn finished; back to the prompt
+                return  # turno terminou; volta para o prompt
 
         elif isinstance(message, Transcript):
-            who = "voce" if message.role == "user" else "bmo "
-            print(f"  {who}> {message.text}")
+            if message.role == "user":
+                print(f"  voce> {message.text}")
+                continue
+
+            # Resposta do assistente. As parciais são as frases conforme saem do
+            # LLM -- falar cada uma na hora é o que evita esperar a resposta
+            # inteira. A final é a mesma coisa junta, só para a tela.
+            if message.final:
+                continue
+            print(f"  bmo > {message.text}")
+            elapsed = await speak(voice, speaker, message.text)
+            if spoke_at is None:
+                spoke_at = elapsed
+                print(f"        [primeira fala em {elapsed:.2f}s]")
 
         elif isinstance(message, ToolCall):
-            # Execution is always local, wherever the intent came from
-            # (plan section 5, rule 3). device/local/ will own this.
+            # A execução é sempre local, venha a intenção de onde vier
+            # (plan section 5, rule 3). device/local/ vai assumir isso.
             print(f"  [tool_call {message.name} {message.args} -- nao implementado]")
             await client.send(ToolResult(id=message.id, ok=False, error="not implemented"))
 
@@ -77,16 +101,20 @@ async def handle_incoming(client: GatewayClient, machine: StateMachine) -> None:
 async def run() -> None:
     machine = StateMachine()
 
-    async with GatewayClient() as client:
-        print("BMO -- modo texto (fase 0). Ctrl+C para sair.\n")
-        while True:
-            text = (await read_line("voce: ")).strip()
-            if not text:
-                continue
+    voice = PiperVoiceEngine(voice_path())
+    print(f"voz: {voice.name} ({voice.sample_rate} Hz)")
 
-            await client.send_audio(text.encode("utf-8"))
-            await client.end_audio()
-            await handle_incoming(client, machine)
+    with Speaker(voice.sample_rate, config.output_device or None) as speaker:
+        async with GatewayClient() as client:
+            print("BMO -- modo texto, voz local (fase 0). Ctrl+C para sair.\n")
+            while True:
+                text = (await read_line("voce: ")).strip()
+                if not text:
+                    continue
+
+                await client.send_audio(text.encode("utf-8"))
+                await client.end_audio()
+                await handle_incoming(client, machine, voice, speaker)
 
 
 def main() -> None:

@@ -17,12 +17,13 @@ device/      runs on the PC now, on a Pi 5 later
   activation/    wake word, GPIO button, power-source detection
   router/        regex + embeddings intent matching
   local/         timers, alarms, reminders (SQLite + scheduler)
+  tts/          Piper: the assistant's own voice, synthesised locally
   face/          web app served locally, state over WS
   ws_client.py   the single connection to the gateway
   state.py       state machine
 gateway/     runs in Docker on localhost now, on a VPS later
   api/           WebSocket, token auth, the turn loop
-  stt/ llm/ tts/ interface + swappable implementations
+  stt/ llm/     interface + swappable implementations
   tools/         spotify, home_assistant, web_search
   conversation/  history and context assembly
 common/      shared message schemas -- the contract, never logic
@@ -52,8 +53,11 @@ Accepted when 10 consecutive turns transcribe reliably in pt-BR.
 **Working today** in text mode: you type instead of speaking, and the line is
 sent over the same binary channel that will carry PCM, so everything past the
 microphone is the real path -- state machine, wire protocol, simulated link
-delay. The LLM is real (Ollama, local); STT and TTS are stubs behind their
-interfaces while `lab/` decides who replaces them.
+delay.
+
+The LLM is real (Ollama, local) and **so is the voice**: the gateway streams the
+answer back as text, one sentence at a time, and the device speaks it with a
+Piper model fine-tuned on the owner's voice. Only STT is still a stub.
 
 ```powershell
 ollama serve                                            # or the Ollama app

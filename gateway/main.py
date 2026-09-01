@@ -15,7 +15,6 @@ from gateway.config import config  # noqa: E402
 from gateway.llm.base import LLMProvider  # noqa: E402
 from gateway.llm.ollama import OllamaProvider  # noqa: E402
 from gateway.stt.stub import TextPassthroughSTT  # noqa: E402
-from gateway.tts.stub import SilenceTTS  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
@@ -40,7 +39,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         websocket=websocket,
         stt=TextPassthroughSTT(),
         llm=build_llm(),
-        tts=SilenceTTS(),
         expected_token=config.device_token,
     )
     await session.run()

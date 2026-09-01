@@ -21,7 +21,6 @@ from gateway.conversation.history import Conversation
 from gateway.llm.base import LLMProvider
 from gateway.stt.base import SpeechToText
 from gateway.timing import Turn
-from gateway.tts.base import TextToSpeech
 
 log = logging.getLogger("bmo.session")
 
@@ -36,13 +35,11 @@ class Session:
         websocket: WebSocket,
         stt: SpeechToText,
         llm: LLMProvider,
-        tts: TextToSpeech,
         expected_token: str,
     ) -> None:
         self._ws = websocket
         self._stt = stt
         self._llm = llm
-        self._tts = tts
         self._expected_token = expected_token
         self._conversation = Conversation()
         self._frames: asyncio.Queue[bytes | None] = asyncio.Queue()
@@ -130,12 +127,35 @@ class Session:
             yield chunk
 
     async def _speak_response(self, turn: Turn) -> str:
-        """Stream the LLM answer, synthesising each sentence as it completes."""
+        """Stream the answer to the device, one sentence at a time.
+
+        Sentences go out as they complete, not at the end. The device starts
+        speaking the first while the LLM is still writing the third, which is one
+        of the two biggest latency wins the plan names (section 11).
+
+        Only text crosses the network. After decision D1 the synthesis happens on
+        the device, so a turn costs a few KB instead of the ~250 KB of PCM the
+        original design assumed -- and the device can still speak with the
+        connection down.
+        """
         spoken = False
-        tts_marked = False
+        first_sentence = True
         pending = ""
         full = ""
         first_token = True
+
+        async def flush(sentence: str) -> None:
+            nonlocal spoken, first_sentence
+            if not sentence.strip():
+                return
+            if not spoken:
+                await self._send(StateMessage(value=State.SPEAKING))
+                spoken = True
+            if first_sentence:
+                turn.mark("primeira_frase")
+                first_sentence = False
+            # final=False: mais frases vêm em seguida nesta mesma resposta.
+            await self._send(Transcript(text=sentence.strip(), role="assistant", final=False))
 
         async for delta in self._llm.respond(self._conversation.prompt(), tools=[]):
             if delta.tool_name:
@@ -154,32 +174,17 @@ class Session:
             pending += delta.text
             full += delta.text
             if pending[-1] in BREAKS:
-                if not spoken:
-                    await self._send(StateMessage(value=State.SPEAKING))
-                    spoken = True
-                await self._stream_tts(pending, None if tts_marked else turn)
-                tts_marked = True
+                await flush(pending)
                 pending = ""
 
-        if pending.strip():
-            if not spoken:
-                await self._send(StateMessage(value=State.SPEAKING))
-                spoken = True
-            await self._stream_tts(pending, None if tts_marked else turn)
-            tts_marked = True
+        await flush(pending)
 
         if full.strip():
-            await self._send(Transcript(text=full.strip(), role="assistant"))
-        turn.mark("tts")
+            # A resposta inteira, marcada como final: serve para a tela e para o
+            # histórico, e diz ao dispositivo que não vem mais nada.
+            await self._send(Transcript(text=full.strip(), role="assistant", final=True))
+        turn.mark("resposta")
         return full.strip()
-
-    async def _stream_tts(self, text: str, turn: Turn | None) -> None:
-        first = True
-        async for chunk in self._tts.synthesize(text.strip()):
-            if first and turn is not None:
-                turn.mark("tts_first_chunk")
-                first = False
-            await self._ws.send_bytes(chunk)
 
     async def _send(self, message: object) -> None:
         await self._ws.send_text(encode(message))
