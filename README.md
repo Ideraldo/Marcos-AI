@@ -15,8 +15,8 @@ up portability.
 device/      runs on the PC now, on a Pi 5 later
   audio/         capture (mic + VAD), playback
   activation/    wake word, GPIO button, power-source detection
-  router/        regex + embeddings intent matching
-  local/         timers, alarms, reminders (SQLite + scheduler)
+  router/        level-0 intent matching: regex + slot extraction
+  local/         timers, alarms, the clock -- SQLite + scheduler, no network
   stt/           faster-whisper: transcription happens before the wire (D1)
   tts/          Piper: the assistant's own voice, synthesised locally
   face/          web app served locally, state over WS
@@ -113,6 +113,37 @@ Two things that only bite inside a container, both handled in the compose file:
 `host.docker.internal`; and that name only resolves on Docker Engine for Linux
 -- the VPS case -- because of the `extra_hosts` line.
 
+## Phase 2 -- what works with the internet down
+
+Goal: local timers, alarms and reminders behind an intent router.
+Accepted when a timer works with the gateway switched off.
+
+**Done, and verified by running it.** The router looks at the sentence before
+anything touches the network: if it is level 0 -- a timer, an alarm, the time,
+"cancel", "what do I have" -- the device answers on its own, offline, with no
+LLM. Anything it does not recognise goes up to the gateway (D17).
+
+```powershell
+# no gateway running at all
+.\.venv\Scripts\python.exe -m device.main --text
+```
+```
+gateway: fora do ar -- timer, alarme e hora continuam
+voce:   marcos> Sao 20 horas e 2 minutos.   [nivel 0, local]
+voce:   marcos> Timer de 5 segundos.        [nivel 0, local]
+  marcos> Seu timer acabou.                 [timer]
+```
+
+Schedules live in SQLite (`SCHEDULES_DB`) because an alarm has to survive the
+process -- the Pi reboots, and waking you up is the one job that cannot depend
+on anything else being alive. One thing the router deliberately does **not** do
+is guess: an unmatched sentence goes to the LLM, because a router that guesses
+is worse than no router at all (plan section 5, rule 1).
+
+Still missing from this phase, on purpose: embedding similarity for paraphrases
+(waiting on a real level-2 log to say which paraphrases people actually use),
+and volume control (OS mixer, platform-specific).
+
 ## Choosing STT and TTS
 
 `lab/` is where engines are measured before becoming an implementation under
@@ -141,9 +172,8 @@ in `docs/voz-e-locutor.md`:
 **Phase 1's container is written but never executed** (D15), and its first real
 run will be on the VPS (D16). Nothing else waits on it.
 
-**Phase 2 -- local alarms and timers, with the intent router.** The core of
-replacing the Alexa, and the only part that has to survive an internet outage.
-It depends on neither hardware nor a VPS.
+**Phase 3 -- tools on the gateway**: web search, Spotify, Home Assistant. Or
+Phase 4, the face. Neither depends on hardware.
 
 **Then: portable translator mode.** Speak Portuguese, have the device speak
 English or Chinese, and the reverse. Two of the three pieces already exist --

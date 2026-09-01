@@ -45,6 +45,9 @@ class DeviceConfig:
     vad_silence_ms: int = int(os.getenv("VAD_SILENCE_MS", "700"))
     vad_aggressiveness: int = int(os.getenv("VAD_AGGRESSIVENESS", "3"))
     simulated_latency_ms: int = int(os.getenv("SIMULATED_LATENCY_MS", "0"))
+    # Onde moram timers e alarmes. Em disco porque um alarme tem que sobreviver
+    # ao processo -- e a Pi reinicia (plano, secao 5, nivel 0).
+    schedules_db: str = os.getenv("SCHEDULES_DB", "device/data/schedules.db")
 
 
 config = DeviceConfig()

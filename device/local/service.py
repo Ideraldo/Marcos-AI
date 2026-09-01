@@ -1,0 +1,156 @@
+"""Nível 0: o que o aparelho resolve sozinho, sem rede e sem LLM.
+
+A regra 3 do plano é o motivo de este arquivo existir no dispositivo e não no
+gateway: **a execução é sempre local, venha a intenção de onde vier.** O gateway
+nunca é responsável por te acordar.
+
+Cada método devolve a frase a falar. Nenhum deles fala: quem fala é o laço do
+dispositivo, que é quem tem o Piper e a placa de som.
+"""
+
+from __future__ import annotations
+
+import time
+from datetime import datetime, timedelta
+from typing import Callable
+
+from device.local.store import Schedule, ScheduleStore
+from device.router.intents import Intent
+
+#: Frases fixas. A regra 2 do plano manda pré-sintetizar as respostas do nível 0
+#: para o aparelho parecer instantâneo. Com o Piper em RTF 0,05 isso ainda não
+#: dói, mas é aqui que o cache entra quando doer -- por isso elas são constantes
+#: e não f-strings espalhadas.
+NADA_PARA_CANCELAR = "Nao tem nada marcado."
+QUAL_CANCELAR = "Voce tem mais de um. Qual eu cancelo?"
+
+
+class LocalServices:
+    """Timers, alarmes e a hora. Tudo o que precisa funcionar com a rede fora."""
+
+    def __init__(
+        self, store: ScheduleStore, on_change: Callable[[], None] | None = None
+    ) -> None:
+        self._store = store
+        # Agendar não basta: o agendador está dormindo até o próximo disparo
+        # conhecido, e um timer novo pode ser mais cedo que isso. Sem este aviso
+        # ele só perceberia na próxima soneca -- foi exatamente o que aconteceu
+        # na primeira execução de verdade: o timer de 5 segundos ficou pendente
+        # porque o laço dormia 30.
+        self.on_change: Callable[[], None] = on_change or (lambda: None)
+
+    # -- despacho ----------------------------------------------------------
+
+    def handle(self, intent: Intent) -> str | None:
+        """Executa a intenção e devolve o que falar.
+
+        `None` significa "não é minha" — o chamador manda para o gateway. É o
+        caminho de escape que mantém a regra 1: na dúvida, sobe.
+        """
+        handler = {
+            "criar_timer": self.criar_timer,
+            "criar_alarme": self.criar_alarme,
+            "cancelar": self.cancelar,
+            "listar": self.listar,
+            "que_horas": self.que_horas,
+        }.get(intent.name)
+        return handler(intent.slots) if handler else None
+
+    # -- ações -------------------------------------------------------------
+
+    def criar_timer(self, slots: dict) -> str:
+        segundos = slots["segundos"]
+        self._store.add("timer", fire_at=time.time() + segundos, label=None)
+        self.on_change()
+        return f"Timer de {_duracao_por_extenso(slots['quantidade'], slots['unidade'])}."
+
+    def criar_alarme(self, slots: dict) -> str:
+        alvo = _proxima_ocorrencia(slots["hora"], slots["minuto"])
+        self._store.add("alarme", fire_at=alvo.timestamp(), label=None)
+        self.on_change()
+        quando = "amanha" if alvo.date() > datetime.now().date() else "hoje"
+        return f"Alarme para as {_hora_por_extenso(slots['hora'], slots['minuto'])}, {quando}."
+
+    def cancelar(self, slots: dict) -> str:
+        alvo = slots.get("alvo")
+        pendentes = self._store.pending(alvo) if alvo else self._store.pending()
+        if not pendentes:
+            return NADA_PARA_CANCELAR
+        if len(pendentes) > 1 and not alvo:
+            # Cancelar o errado é pior que perguntar. "Apaga a luz da sala"
+            # virando "apaga tudo" é o exemplo do plano, e vale igual aqui.
+            return QUAL_CANCELAR
+        item = pendentes[0]
+        self._store.cancel(item.id)
+        self.on_change()
+        return f"{item.kind.capitalize()} cancelado."
+
+    def listar(self, slots: dict) -> str:
+        pendentes = self._store.pending()
+        if not pendentes:
+            return "Nao tem nada marcado."
+        partes = [_descrever(item) for item in pendentes]
+        if len(partes) == 1:
+            return partes[0] + "."
+        return ", ".join(partes[:-1]) + f" e {partes[-1]}."
+
+    def que_horas(self, slots: dict) -> str:
+        agora = datetime.now()
+        return f"Sao {_hora_por_extenso(agora.hour, agora.minute)}."
+
+    # -- disparo -----------------------------------------------------------
+
+    def anunciar(self, item: Schedule) -> str:
+        if item.kind == "timer":
+            return "Seu timer acabou."
+        if item.kind == "alarme":
+            return "Hora de acordar."
+        return f"Lembrete: {item.label}." if item.label else "Voce pediu para lembrar."
+
+
+# -- formatação em português -----------------------------------------------
+#
+# O aparelho fala; não escreve. "07:05" é lido como "zero sete zero cinco" por
+# qualquer TTS, então o texto que vai para o Piper já sai por extenso.
+
+
+def _duracao_por_extenso(quantidade: int, unidade: str) -> str:
+    plural = "s" if quantidade != 1 else ""
+    return f"{quantidade} {unidade}{plural}"
+
+
+def _hora_por_extenso(hora: int, minuto: int) -> str:
+    """Como se fala a hora, não como se escreve.
+
+    "20 e 1" é o que sai da forma ingênua, e soa errado dito em voz alta. Com
+    minuto abaixo de dez a pessoa diz a unidade inteira: "vinte horas e um
+    minuto". Foi ouvindo o aparelho falar "São 20 e 1" que isto apareceu.
+    """
+    if minuto == 0:
+        return f"{hora} em ponto" if hora else "meia noite"
+    if minuto == 30:
+        return f"{hora} e meia"
+    if minuto < 10:
+        return f"{hora} horas e {minuto} minuto" + ("s" if minuto != 1 else "")
+    return f"{hora} e {minuto}"
+
+
+def _descrever(item: Schedule) -> str:
+    if item.kind == "timer":
+        restante = max(0, int(round(item.seconds_left())))
+        if restante >= 60:
+            return f"um timer com {restante // 60} minutos restantes"
+        return f"um timer com {restante} segundos restantes"
+    alvo = datetime.fromtimestamp(item.fire_at)
+    return f"um alarme para as {_hora_por_extenso(alvo.hour, alvo.minute)}"
+
+
+def _proxima_ocorrencia(hora: int, minuto: int) -> datetime:
+    """O próximo HH:MM. Hoje se ainda não passou, amanhã se já passou.
+
+    É o que qualquer pessoa quer dizer com "me acorda às 7" às onze da noite, e
+    é a diferença entre um despertador e um alarme que já nasce vencido.
+    """
+    agora = datetime.now()
+    alvo = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
+    return alvo + timedelta(days=1) if alvo <= agora else alvo

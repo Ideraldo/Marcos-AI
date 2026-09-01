@@ -451,3 +451,52 @@ runner de CI, a Pi), rodar o build ali é meia hora que se paga.
 
 **Alternativa considerada e descartada:** Docker Desktop com backend Hyper-V em
 vez de WSL2. Não resolve — o Hyper-V exige a mesma virtualização de firmware.
+
+---
+
+## D17 — O aparelho liga sem o gateway, e tenta o nível 0 antes da rede
+
+**Data:** 2026-09-01
+**O plano diz:** a seção 2 trata a conexão com o gateway como o canal que o
+dispositivo abre ao subir. A seção 5 exige que o nível 0 funcione sem rede, mas
+não diz o que acontece no momento do boot.
+
+**O que mudou:** duas coisas, e elas são a mesma decisão vista de dois lados.
+
+1. `GatewayClient.__aenter__` tenta conectar **uma vez** e segue mesmo falhando.
+   Sem gateway, o aparelho sobe em modo local e avisa. A retentativa infinita de
+   [D14](#d14--o-dispositivo-reconecta-sozinho-o-turno-perdido-não-volta)
+   continua existindo para quedas em segundo plano, mas o envio de uma frase
+   passa a ter orçamento (`CONNECT_BUDGET`, 8 s): quem está esperando resposta
+   merece um "não deu" em vez de silêncio.
+2. `answer()` consulta o roteador **antes** de tocar na rede. Casou no nível 0,
+   resolve e fala; não casou, sobe.
+
+**Por quê:** o critério de aceite da Fase 2 é "timer funciona com o gateway
+desligado", e um aparelho que não liga sem o servidor nunca cumpriria isso.
+A ordem no `answer()` é o que dá ao timer a latência que a seção 11 orça
+(< 200 ms) — consultar a rede primeiro para depois descobrir que a intenção era
+local seria pagar o pior caso em todo comando bom.
+
+**Consequências:**
+- Com o gateway fora, uma pergunta de nível 2 é respondida com voz: *"não
+  consigo falar com o servidor agora; timer e alarme continuam funcionando"*.
+  Silêncio seria indistinguível de microfone quebrado.
+- `device/local/` e `device/router/` não importam `ws_client` nem `websockets`,
+  e há um teste que falha se alguém importar. Não é estilo: é o que impede que,
+  um dia, o caminho do despertador passe a depender do Wi-Fi.
+- As frases que não casam vão para o log como `nivel 2`. Em um mês esse log diz
+  quais intenções promover (plano, seção 5, regra 4).
+
+**O que ficou de fora, e é consciente:** a similaridade por embeddings. Hoje o
+nível 0 é só regex, o que cobre formato rígido — duração, horário, "cancela" — e
+não cobre paráfrase ("me lembra de tirar o bolo quando der uma meia horinha").
+Isso não é uma lacuna silenciosa: o que não casa sobe para o LLM, que é o
+comportamento correto pela regra 1. Os embeddings entram quando houver log real
+dizendo quais paráfrases as pessoas usam de verdade nesta casa — escolher as
+frases de exemplo por adivinhação seria treinar contra um usuário imaginário.
+
+**Também de fora:** volume ("aumenta o volume") está no nível 0 do plano e não
+foi implementado. Ele depende do mixer do sistema operacional, que é
+código específico de plataforma e não se testa na mesa do jeito que o resto se
+testou.

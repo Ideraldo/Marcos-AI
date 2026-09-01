@@ -65,8 +65,8 @@ device/
   audio/        captura (microfone + VAD), playback, escolha de I/O
   stt/          transcrição local: faster-whisper, antes do fio (D13)
   router/       roteador de intenções (seção 5): decide se resolve
-                aqui ou manda para o gateway
-  local/        timers, alarmes, lembretes — SQLite + agendador
+                aqui ou manda para o gateway. Hoje só regex (D17)
+  local/        timers, alarmes, a hora — SQLite + agendador, sem rede
   face/         o rosto: HTML/CSS/JS servido localmente
   state.py      IDLE → LISTENING → THINKING → SPEAKING
   tts/          síntese local: a voz própria, treinada em lab/finetune

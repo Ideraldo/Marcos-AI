@@ -1135,7 +1135,124 @@ e só falha no dia em que você precisa dele.*
 
 ---
 
+## Dia 5 (final) — O nível 0, e três bugs que só a execução mostrou
+
+A Fase 2 é o núcleo da substituição da Alexa: timer, alarme e hora, funcionando
+com a internet fora. O plano coloca ela antes do rosto e do wake word de
+propósito, e depois de escrever isso eu entendo por quê — é a primeira parte que
+não pode falhar.
+
+Saíram três peças: `device/local/` (SQLite + agendador), `device/router/`
+(regex com extração de slots) e a mudança no laço do dispositivo que consulta o
+roteador **antes** da rede. Virou [D17](decisions.md).
+
+### O roteador recusa mais do que aceita, e isso é o ponto
+
+A regra 1 do plano diz que roteador que chuta é pior que roteador nenhum. Então
+metade do teste de roteador é sobre o que ele **não** pode reconhecer:
+
+```
+"põe um timer de 10 minutos"        -> criar_timer, 600s
+"me acorda daqui a vinte e cinco minutos" -> criar_timer, 1500s
+"alarme pras 6h15"                  -> criar_alarme, 6:15
+"põe um timer de banana minutos"    -> None  (sobe pro LLM)
+"me acorda às 30"                   -> None  (hora impossível)
+"que horas são em Tóquio"           -> None  (não é a hora local)
+```
+
+O primeiro padrão que escrevi tinha um erro sutil: `_NUM` aceitava
+`[a-z]+`, qualquer palavra. Em *"põe um alarme para as 6 e 30"*, o `as` casava
+como candidato a número, a conversão devolvia `None`, e a frase inteira caía
+para o LLM — uma frase perfeitamente reconhecível. Troquei o curinga pela lista
+literal de números por extenso. **Regex permissiva demais não erra reconhecendo
+errado; erra deixando de reconhecer, que é mais difícil de notar.**
+
+### Três bugs, e nenhum deles apareceu nos testes
+
+Escrevi 61 testes, todos passando, e aí rodei o aparelho de verdade. Três coisas
+quebraram.
+
+**1. `illegal transition State.IDLE -> State.THINKING`.** No caminho de gateway
+fora do ar eu forçava a máquina de estados para IDLE e depois para THINKING
+direto. Ela recusou — e estava certa: as transições legais são as do plano, e
+IDLE só vai para LISTENING. A máquina de estados do Dia 2 pegou um bug meu do
+Dia 5. É o tipo de coisa que só se descobre gostando de ter escrito a validação
+quando ela te contraria.
+
+**2. O timer não tocava.** Esse foi o bom. O serviço gravava certo. O agendador
+disparava certo. Os testes dos dois passavam. E mesmo assim:
+
+```
+voce:   marcos> Timer de 5 segundos.   [nivel 0, local]
+voce: (silêncio)
+```
+
+Fui olhar o banco:
+
+```
+{'id': '948a070b', 'kind': 'timer', 'fire_at': ..., 'fired_at': None}
+```
+
+Gravado, pendente, nunca disparado. **Ninguém acordava o agendador.** Ele dorme
+até o próximo disparo conhecido — e quando não há nada agendado, dorme os 30
+segundos do `MAX_SLEEP`. Um timer novo, mais curto que isso, só seria notado na
+soneca seguinte. O método `notify()` existia desde o começo e nunca era chamado.
+
+Isso é o defeito clássico de teste de unidade: as duas peças estavam certas, o
+**elo** entre elas não existia, e nenhum teste olhava para o elo. O teste novo
+reproduz exatamente isso — deixa o agendador adormecer com a fila vazia, cria um
+timer curto, e falha se ele não tocar.
+
+**3. "São 20 e 1."** Ouvi o aparelho falar isso e ficou óbvio. Escrito, `20:01`
+está certo; falado, ninguém diz "vinte e um" para uma da noite passada de um
+minuto. Com minuto abaixo de dez a pessoa fala a unidade inteira: *"são vinte
+horas e um minuto"*. É a mesma lição do Dia 2 com o `edge-tts` — o texto que vai
+para o TTS não é o texto que se escreve.
+
+### A prova de que a Fase 2 está de pé
+
+Gateway desligado, do começo ao fim:
+
+```
+marcos.ws gateway fora do ar; subindo em modo local
+gateway: fora do ar -- timer, alarme e hora continuam
+
+voce:   marcos> Sao 20 horas e 2 minutos.   [nivel 0, local]
+voce:   marcos> Timer de 5 segundos.        [nivel 0, local]
+voce:
+  marcos> Seu timer acabou.                 [timer]
+  marcos> Nao tem nada marcado.             [nivel 0, local]
+```
+
+O timer tocou sozinho, cinco segundos depois, sem nenhum servidor no ar. Esse é
+o critério de aceite da Fase 2, e é a primeira vez que o aparelho faz algo útil
+sem depender de nada além dele mesmo.
+
+### O que deixei de fora, e por quê
+
+**Embeddings.** O plano quer regex *e* similaridade. Só o regex existe, o que
+cobre formato rígido e não cobre paráfrase. Deixei de fora de propósito: as 5–10
+frases de exemplo por intenção teriam que ser inventadas por mim, e eu estaria
+adivinhando como *eu* falaria, não como eu falo. O log do nível 2 já está
+gravando as frases que sobem — em um mês ele diz quais paráfrases são reais.
+
+**Volume.** Está no nível 0 do plano. Depende do mixer do sistema operacional,
+que é código por plataforma e não se testa na mesa como o resto se testou.
+
+Nos dois casos o comportamento sem eles é o correto: o que não casa sobe para o
+LLM. Uma lacuna que degrada bem não é dívida — é escopo.
+
+*Lição para o vídeo: 61 testes verdes e três bugs em dois minutos de uso real. Os
+testes provaram que cada peça funcionava. Nenhum deles perguntava se as peças
+estavam ligadas uma na outra.*
+
+---
+
 ## Onde estamos agora
+
+**O Marcos me ouve, pensa, responde com a minha voz — e agora também resolve
+sozinho o que não precisa de ninguém.** Timer, alarme e hora funcionam com o
+gateway desligado e com a internet fora.
 
 **O Marcos me ouve, pensa e responde com a minha voz — sem eu digitar nada.** O
 microfone captura, o VAD corta, o faster-whisper transcreve no próprio
@@ -1161,6 +1278,8 @@ Fechado até aqui:
 | VPS | adiada (D10) | nada do que falta depende dela |
 | Binários | fora do git (D12) | 32 GB, e o `.onnx` é a minha voz |
 | Imagem do gateway | só `requirements-gateway.txt` (D15) | sem STT, sobrou fastapi + httpx |
+| Nível 0 | regex + SQLite no dispositivo (D17) | o despertador não pode depender do Wi-Fi |
+| Boot | sobe sem o gateway (D17) | senão o critério da Fase 2 é impossível |
 
 **Fase 0 cumprida por inteiro, e além.** O critério era o loop em dois processos;
 temos LLM real, voz própria e o STT fora do stub.
@@ -1172,10 +1291,17 @@ simulada funcionam. O container foi corrigido (D15) — imagem enxuta,
 desligada na BIOS por causa do Valorant, e sem ela não há WSL2 nem Docker
 Desktop. Na VPS é Linux, e o problema não existe.
 
-Próximo marco: **Fase 2 — alarmes e timers locais, com o roteador de intenções.**
-É o núcleo da substituição da Alexa, a única parte que precisa sobreviver a uma
-queda de internet, e o plano a coloca antes do rosto e do wake word de propósito.
-Não depende de hardware nem de VPS.
+**Fase 2 entregue no essencial.** Timer, alarme, hora, listar e cancelar rodam
+no dispositivo, sem rede e sem LLM, e o aparelho liga com o gateway desligado. O
+critério de aceite — "timer funciona com o gateway desligado" — foi verificado
+rodando, não só em teste.
+
+Falta da Fase 2, e é escopo consciente (D17): a similaridade por **embeddings**,
+que espera o log real de nível 2 dizer quais paráfrases as pessoas usam; e o
+**volume**, que depende do mixer do sistema operacional.
+
+Próximo marco: **Fase 3 — ferramentas no gateway** (busca web, Spotify, Home
+Assistant), ou a Fase 4 (o rosto). Nenhuma das duas depende de hardware.
 
 Marco seguinte, planejado: **modo tradutor portátil.** Falar português e o
 aparelho falar inglês ou chinês, e o contrário. Duas das três peças já existem —
@@ -1201,8 +1327,8 @@ Em aberto:
 - Se o gateway deve re-transcrever com um modelo maior — a pergunta de D1 que
   D13 deixou sem caminho, porque o áudio não sobe mais
 
-Ainda não começou: roteador de intenções, alarmes locais, modo tradutor, rosto,
-wake word, VPS, hardware.
+Ainda não começou: embeddings no roteador, volume, ferramentas do gateway, modo
+tradutor, rosto, wake word, VPS, hardware.
 
 ---
 ## Como continuar preenchendo

@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import time
 from typing import Any, AsyncIterator
 
 import websockets
@@ -31,6 +32,13 @@ log = logging.getLogger("marcos.ws")
 #: segundos; o teto existe para não martelar um servidor que caiu de vez.
 BACKOFF_START = 0.5
 BACKOFF_CAP = 30.0
+
+#: Quanto tempo insistir quando há alguém esperando resposta. Depois da Fase 2 o
+#: aparelho não precisa mais do gateway para existir -- timer, alarme e hora são
+#: locais --, então ficar preso tentando reconectar é pior que dizer "não deu" e
+#: voltar a ouvir. A retentativa sem fim continua valendo para o que roda ao
+#: fundo, não para o turno de alguém que está parado esperando (D14).
+CONNECT_BUDGET = 8.0
 
 
 class AuthRejected(Exception):
@@ -63,8 +71,22 @@ class GatewayClient:
         self._ws: Any = None
 
     async def __aenter__(self) -> "GatewayClient":
-        await self._connect()
+        """Tenta conectar uma vez, e segue mesmo se não conseguir.
+
+        Não bloqueia de propósito: o critério de aceite da Fase 2 é o timer
+        funcionar com o gateway desligado, e um aparelho que nem liga sem o
+        servidor nunca cumpriria isso. Sem conexão ele sobe em modo local, e a
+        primeira frase que precisar do LLM tenta de novo.
+        """
+        try:
+            await self._connect(budget=0)
+        except ConnectionLost:
+            log.warning("gateway fora do ar; subindo em modo local")
         return self
+
+    @property
+    def online(self) -> bool:
+        return self._ws is not None
 
     async def __aexit__(self, *exc: object) -> None:
         if self._ws is not None:
@@ -73,15 +95,17 @@ class GatewayClient:
 
     # -- conexão -----------------------------------------------------------
 
-    async def _connect(self) -> None:
-        """Conecta e faz o aperto de mão, tentando até conseguir.
+    async def _connect(self, budget: float | None = None) -> None:
+        """Conecta e faz o aperto de mão.
 
-        Não desiste por contagem de tentativas: um aparelho de prateleira que
-        desiste precisa de alguém para religá-lo, e é justamente quando ninguém
-        está olhando que o Wi-Fi cai.
+        `budget` é quanto tempo insistir: `None` é para sempre (o aparelho de
+        prateleira que não pode depender de alguém para religá-lo), e um número
+        é para quando há uma pessoa esperando do outro lado. Estourando o
+        orçamento levanta `ConnectionLost`, e quem chamou decide o que dizer.
         """
         delay = BACKOFF_START
         attempt = 0
+        deadline = None if budget is None else time.monotonic() + budget
         while True:
             attempt += 1
             try:
@@ -96,6 +120,8 @@ class GatewayClient:
                 # Meio segundo de dispersão: sem isso, vários dispositivos
                 # voltando do mesmo apagão batem no gateway no mesmo instante.
                 wait = min(delay, BACKOFF_CAP) + random.uniform(0, 0.5)
+                if deadline is not None and time.monotonic() + wait > deadline:
+                    raise ConnectionLost(f"gateway inacessivel: {exc}") from exc
                 log.warning(
                     "gateway inacessivel (%s); nova tentativa em %.1fs", exc, wait
                 )
@@ -131,13 +157,13 @@ class GatewayClient:
         verdade para entregar.
         """
         if self._ws is None:
-            await self._connect()
+            await self._connect(budget=CONNECT_BUDGET)
             return await self.send(message)
         try:
             await self.send(message)
         except ConnectionClosed:
             log.warning("socket caiu antes de enviar; reconectando")
-            await self._connect()
+            await self._connect(budget=CONNECT_BUDGET)
             await self.send(message)
 
     async def send_utterance(self, text: str) -> None:
