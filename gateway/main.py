@@ -24,7 +24,11 @@ app = FastAPI(title="BMO gateway")
 def build_llm() -> LLMProvider:
     """The only place that knows which provider is active (plan section 6)."""
     if config.llm_provider == "ollama":
-        return OllamaProvider(base_url=config.ollama_url, model=config.llm_model)
+        return OllamaProvider(
+            base_url=config.ollama_url,
+            model=config.llm_model,
+            timeout=config.llm_timeout,
+        )
     raise ValueError(f"unknown LLM_PROVIDER {config.llm_provider!r}")
 
 

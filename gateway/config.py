@@ -14,6 +14,10 @@ class GatewayConfig:
     llm_provider: str = os.getenv("LLM_PROVIDER", "ollama")
     llm_model: str = os.getenv("LLM_MODEL", "llama3.1:8b")
     ollama_url: str = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    # Um modelo local sem GPU livre responde em minutos, nao em segundos. O
+    # limite existe para nao pendurar a sessao para sempre, mas ele precisa ser
+    # ajustavel: o valor certo depende de onde o modelo esta rodando.
+    llm_timeout: float = float(os.getenv("LLM_TIMEOUT", "120"))
     llm_api_key: str | None = os.getenv("LLM_API_KEY")
     stt_api_key: str | None = os.getenv("STT_API_KEY")
     tts_api_key: str | None = os.getenv("TTS_API_KEY")
