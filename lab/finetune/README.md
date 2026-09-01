@@ -118,9 +118,21 @@ aprende, sem nenhum alinhamento rotulado, quanto tempo dura cada fonema.
 ## 3. Exportar e ouvir
 
 ```powershell
-py -m lab.finetune.train --export --name ideraldo
+py -m lab.finetune.train --list --name ideraldo            # o que da para exportar
+py -m lab.finetune.train --export --name ideraldo          # o mais recente
+py -m lab.finetune.train --export --epoch 318 --name ideraldo   # uma epoca especifica
 py -m lab.run_tts --engine piper --voice pt_BR-ideraldo-medium --play
 ```
+
+Exportar uma época específica dá o nome `pt_BR-ideraldoep318-medium`, com a época
+embutida. É de propósito: exportar duas não sobrescreve uma a outra, e as duas
+ficam na bancada para serem ouvidas lado a lado nas mesmas frases. `--as <nome>`
+muda isso se você quiser outro nome.
+
+O Lightning grava um checkpoint por métrica monitorada, então uma mesma época
+pode ter dois arquivos (`val_mel` e `val_mos`). São o mesmo modelo — qualquer um
+serve, e o comando avisa qual escolheu. Para apontar um arquivo exato,
+`--checkpoint "epoch=318-val_mos=3.1173.ckpt"`.
 
 O `.onnx` cai direto em `lab/models/piper/`, junto com o `.onnx.json` copiado da
 voz base — o exportador do Piper só escreve o `.onnx`, e sem o config ao lado o
