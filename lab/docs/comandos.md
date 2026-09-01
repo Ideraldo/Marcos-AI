@@ -29,6 +29,8 @@ Set-Alias py .\.venv\Scripts\python.exe
 | Treinar a voz | `py -m lab.finetune.train --name X` |
 | Exportar e ouvir | `py -m lab.finetune.train --export --name X` |
 | Ver se decorou | `py -m lab.finetune.generalize --voice X --against Y` |
+| Exportar sozinho durante o treino | `py -m lab.finetune.watch --name X` |
+| Gravar mais e continuar sem recomeçar | `py -m lab.finetune.prepare --from-run X` |
 | Rodar o assistente | `py -m uvicorn gateway.main:app` + `py -m device.main` |
 
 ---
@@ -285,6 +287,27 @@ Existe porque o `ModelCheckpoint` guarda só os cinco melhores e apaga os antigo
 no v1 as épocas anteriores à 247 sumiram antes de eu arquivar. Ctrl+C nele não
 afeta o treino.
 
+## Fine-tune — gravar mais depois, sem recomeçar
+
+```powershell
+py -m lab.finetune.record                                   # o bloco novo
+py -m lab.finetune.prepare --from-run ideraldo --as ideraldo-v2
+py -m lab.finetune.train --base ideraldo-v2 --name ideraldo3
+```
+
+| Parâmetro | O que faz |
+|---|---|
+| `--base` | voz publicada a preparar (padrão `pt_BR-dii-high`) |
+| `--from-run NOME` | parte do seu próprio treino em vez de uma voz publicada |
+| `--as NOME` | nome do checkpoint preparado |
+
+O `prepare` mantém os pesos, zera o contador de época e descarta o otimizador —
+que pertence ao treino antigo, com o dataset antigo. Você recomeça já com o
+timbre pronto, e as épocas novas só absorvem o material novo.
+
+Roda sozinho na primeira vez que você treina de uma voz publicada; só precisa ser
+chamado à mão para partir do seu próprio treino.
+
 ## Fine-tune — verificar se decorou
 
 ```powershell
@@ -321,6 +344,8 @@ py -m device.main                     # terminal 3
 ```
 
 Fase 0, modo texto: o que se digita vai pelo mesmo canal binário que levará PCM.
+**O Marcos responde falando**, com a voz treinada — o gateway manda o texto frase
+a frase e o dispositivo sintetiza ([D7](../../docs/decisions.md)).
 
 Variáveis relevantes em `.env`:
 
@@ -328,9 +353,15 @@ Variáveis relevantes em `.env`:
 |---|---|
 | `GATEWAY_URL` | o único endereço que o dispositivo conhece |
 | `DEVICE_TOKEN` | tem que bater dos dois lados |
+| `TTS_VOICE` / `TTS_VOICE_DIR` | qual voz o dispositivo carrega, e de onde |
 | `SIMULATED_LATENCY_MS` | 80 = Wi-Fi, 150 = 4G |
 | `LLM_PROVIDER` / `LLM_MODEL` | `ollama` / `llama3.1:8b` |
+| `LLM_TIMEOUT` | suba se o modelo local estiver sem GPU livre |
 | `AUDIO_INPUT_DEVICE` / `AUDIO_OUTPUT_DEVICE` | áudio do dispositivo |
+
+> **Não rode o Ollama enquanto o fine-tune treina.** Os dois disputam a mesma
+> placa e o treino morre com `CUDA out of memory` — aconteceu. `ollama stop
+> llama3.1:8b` libera a GPU; depois é só `--resume`.
 
 ---
 
@@ -346,6 +377,7 @@ Variáveis relevantes em `.env`:
 | `lab/finetune/dataset/` | o dataset de treino | não |
 | `lab/finetune/runs/<nome>/` | checkpoints do treino | não |
 | `lab/finetune/arquivo/` | vozes .onnx guardadas de treinos antigos | só o LEIAME |
+| `lab/models/piper_ckpt/` | checkpoints base e os preparados por `--from-run` | não |
 | `lab/.devices.json` | microfone e alto-falante escolhidos | não |
 | `lab/speaker/voices.json` | vozes cadastradas | não |
 
