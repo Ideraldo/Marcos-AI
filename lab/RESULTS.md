@@ -77,18 +77,29 @@ Corpus ampliado para 315 frases. **Dataset final: 315 gravações, 30,9 min.**
 | Épocas | 368 rodadas | 1000 planejadas |
 | Export | manual | automático a cada 100 épocas |
 
-Medição na época 531, com a métrica já corrigida:
+Medições com a métrica corrigida:
 
-| | v1 (ep318) | **v2 (ep531)** |
-|---|---|---|
-| Corpus | 11,3% | 14,6% |
-| Holdout | 39,7% | **26,8%** |
-| Distância | +28,4% | **+12,2%** |
-| Base, no mesmo holdout | 22,9% | 19,1% |
+| | v1 (ep318) | v2 (ep531) | **v2 (ep734)** |
+|---|---|---|---|
+| Corpus | 11,3% | 14,6% | 16,8% |
+| Holdout | 39,7% | 26,8% | **26,6%** |
+| Distância corpus↔holdout | +28,4% | +12,2% | **+9,7%** |
+| Base, na mesma rodada | 22,9% | 19,1% | 23,6% |
+| **Diferença para a base** | +16,8 | +7,7 | **+3,0** |
 
-O holdout caiu 13 pontos e a distância caiu pela metade. Os erros que restam são
-de articulação — nasais, sibilantes, siglas — e não de memorização: subtreino,
-não overfit.
+**Na época 734 o diagnóstico virou SAUDÁVEL.** A voz treinada está a 3 pontos da
+base em texto que nunca viu, contra 17 do v1.
+
+Repare no corpus subindo (11,3% → 16,8%): parece pior e é o que se quer. Um
+modelo que decora tem WER baixíssimo nas frases treinadas.
+
+Os erros que restam são de articulação — sibilantes ("chuvisco" → "chuvispo"),
+nomes próprios raros, termos técnicos. É o que melhora por último.
+
+> **Ruído:** a base mediu 19,1% numa rodada e 23,6% noutra, sendo o mesmo
+> modelo — amostragem estocástica do VITS. A melhora de +7,7 para +3,0 tem
+> margem. Já a distância corpus↔holdout compara duas medidas da mesma rodada, e
+> a queda dela (28,4 → 12,2 → 9,7) é o sinal mais confiável.
 
 > **A métrica tinha dois defeitos, corrigidos aqui.** "18h45" virava
 > `dezoitohquarenta` e "R$ 2.300" virava `dois trezentos`, porque a pontuação
