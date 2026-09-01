@@ -663,14 +663,128 @@ quer ver são **as duas colunas caindo juntas**.
 
 ---
 
+## Dia 4 — O treino que parecia lento e estava morto
+
+Acordei com o treino "na época 539" e a sensação de que tinha estagnado. Tinha
+travado — sete horas antes.
+
+### Diagnóstico: parado, não lento
+
+A diferença importa, porque leva a ações opostas: treino lento se espera, treino
+travado se mata e retoma.
+
+Três evidências convergiram:
+
+- **Nada escrito em disco desde 03:40.** Eram 10h33. Se estivesse rodando
+  devagar, ainda estaria salvando checkpoint.
+- **O processo usava 148 MB de RAM.** Um modelo de 70 milhões de parâmetros em
+  treino ocupa gigabytes. Ele tinha sido descarregado da memória.
+- **O `taskkill` respondeu "não há ocorrência da tarefa em execução"** — processo
+  zumbi: o registro existe, a execução não.
+
+É o quadro clássico de **suspensão do PC durante treino em GPU**: o contexto CUDA
+se perde e o processo fica preso numa chamada de driver que nunca retorna. Nem
+`Stop-Process` nem `taskkill /F` derrubam, porque não há o que interromper.
+
+### A recuperação
+
+Matei a árvore inteira — treino, dataloaders, lançadores e o vigia —, desliguei a
+suspensão na tomada (`powercfg /change standby-timeout-ac 0`) e retomei do
+`last.ckpt`, época 535. Perdi 4 épocas e sete horas de relógio, mas nenhum
+progresso real: nas sete horas ele não treinou nada.
+
+O vigia tinha feito o trabalho dele: **seis gerações exportadas durante a noite**
+— 0, 107, 214, 317, 422 e 531 — antes do travamento. Se eu dependesse dos
+checkpoints, teria as cinco melhores do Lightning e nada do começo.
+
+### Um falso alarme meu, logo depois
+
+Confirmei que o treino tinha voltado medindo o crescimento do log a cada 45
+segundos. Deu zero, e eu quase declarei que tinha travado de novo.
+
+Não tinha: o Lightning só escreve no log **ao fim de cada época**, e a época
+agora leva 60 segundos. Eu estava amostrando dentro do intervalo de silêncio
+normal. A medida honesta era contar épocas, não bytes — 3 épocas em 181 s.
+
+*Lição pequena e útil: escolher o sinal errado transforma comportamento normal em
+alarme.*
+
+### O preço que sobrou
+
+A época passou de ~19 s para **60 s**, com a GPU em 15% de uso — gargalo de CPU,
+não de placa. O zumbi antigo continua no sistema, ocupando 674 MB e uma fatia da
+GPU. Não impediu o treino novo de subir, mas atrapalha.
+
+Nesse ritmo as épocas restantes levariam ~7,5 h em vez de ~2,5. Um reboot resolve;
+com a suspensão já desligada, não deve repetir.
+
+### Enquanto isso: a medição estava mentindo
+
+Antes de tudo isso, li os resultados do `generalize` na época 531 e achei dois
+defeitos na própria medição.
+
+**A pontuação contava erro que não existia.** "18h45" virava `dezoitohquarenta` e
+"R$ 2.300" virava `dois trezentos` em vez de `dois mil e trezentos`. Eu removia a
+pontuação antes de soletrar os números, mas ponto de milhar e marcador de hora
+significam algo *dentro* de um número.
+
+**A amostra do corpus era pequena demais.** Duas medições **do mesmo modelo**
+deram 17,4% e 26,9%: o VITS sintetiza com amostragem estocástica, e seis frases
+não seguram uma média. O diagnóstico virou de lado por puro ruído — passou de
+"em transição" para "ainda cru" sem nada ter mudado no modelo. Subi para 20
+frases.
+
+*É a segunda vez que a ferramenta de diagnóstico erra antes do modelo. Vale
+lembrar disso no vídeo: medir é código, e código tem bug.*
+
+### O v2 está melhor, e o ouvido concorda
+
+Com a métrica corrigida, época 531:
+
+| | v1 (ep318) | **v2 (ep531)** |
+|---|---|---|
+| Corpus | 11,3% | 14,6% |
+| Holdout | 39,7% | **26,8%** |
+| Distância | +28,4% | **+12,2%** |
+| Base, no mesmo holdout | 22,9% | 19,1% |
+
+O holdout caiu 13 pontos e a distância caiu pela metade. **Não é mais o padrão de
+fuga do v1**, em que o corpus despencava e o texto novo ficava parado.
+
+Ouvindo, achei a voz "ainda um pouco robótica, não muito natural" — e os números
+concordam: onde ele mais perde para a base é em **nasais, sibilantes e siglas**.
+"Seis-se nisso surravam", "sei o mês como os comeram". São erros de articulação,
+não de memorização. Isso é subtreino, que se resolve treinando; não overfit, que
+se resolveria parando.
+
+Era esperado: com metade do learning rate, o timbre demora mais a assentar. Foi o
+preço pago de propósito.
+
+### Uma armadilha nas frases de teste
+
+Perguntei se o comando de ouvir usava frases novas. Não usava: são as sete fixas
+da bancada — e **duas delas estão no corpus de treino**. Um modelo que decorou
+soa bem nelas, que é exatamente o que se quer detectar.
+
+Ganhou um `--text` para falar qualquer coisa digitada na hora. Para julgar de
+verdade, o caminho continua sendo o `generalize --play`, que toca as 15 frases
+que ninguém nunca gravou.
+
+---
+
 ## Onde estamos agora
 
-**Treino v2 rodando.** Fine-tune do `pt_BR-dii-high` com 30,9 min de áudio,
-learning rate 1e-4, 1000 épocas, exportando um `.onnx` a cada 100 épocas para
-haver uma série audível de manhã.
+**Treino v2 em andamento**, retomado da época 535 depois de travar de madrugada
+por suspensão do PC. Fine-tune do `pt_BR-dii-high` com 30,9 min de áudio,
+learning rate 1e-4, alvo de 1000 épocas.
 
-O v1 foi descartado por memorização e está arquivado em
-`lab/finetune/arquivo/v1-decorou/` — seis gerações em `.onnx`, para o vídeo.
+Última medição, época 531: holdout **26,8%** contra 39,7% do v1, e distância
+corpus↔holdout de **+12,2%** contra +28,4%. Melhorou dos dois lados. A voz ainda
+soa robótica, e os erros são de articulação (nasais, sibilantes, siglas) — o que
+indica subtreino, não memorização.
+
+O v1 está arquivado em `lab/finetune/arquivo/v1-decorou/`, seis gerações em
+`.onnx`, para o vídeo.
 
 Fechado até aqui:
 
@@ -685,10 +799,10 @@ Fechado até aqui:
 
 Próximo passo imediato:
 
-1. De manhã, ouvir a série `pt_BR-ideraldoep100`, `ep200`, `ep300`…
-2. Rodar `lab.finetune.generalize` no melhor deles contra o `dii-high`
-3. Se as duas colunas caírem juntas, escolher a época e fechar o TTS.
-   Se o holdout empacar de novo: `--lr 5e-5`, depois bloco 4, depois batch maior
+1. Reiniciar o PC quando der, para limpar o processo zumbi que está deixando cada
+   época em 60 s em vez de 19 s. Retomar com `--resume`.
+2. Medir de novo lá pela época 800: o que se quer é o holdout continuando a cair
+3. Se o holdout empacar em ~27%: `--lr 5e-5`, depois bloco 4, depois batch maior
 
 Em aberto:
 

@@ -325,3 +325,35 @@ flag, a última é uma hora de leitura.
 
 A seção 9 do plano pede 150–200 gravações da sua voz para treinar o wake word.
 São as mesmas amostras. Gravar uma vez resolve as duas coisas.
+
+---
+
+## Se o treino travar de madrugada
+
+Aconteceu: o PC suspendeu durante o treino e o processo ficou preso no driver da
+GPU. Como distinguir travado de lento, que levam a ações opostas:
+
+| Sinal | Lento | **Travado** |
+|---|---|---|
+| Checkpoints novos | continuam aparecendo | param |
+| RAM do processo | gigabytes | **centenas de MB** |
+| `taskkill /F` | encerra | **"não há ocorrência da tarefa em execução"** |
+
+O último é o mais claro: um processo zumbi tem registro mas não execução, e nem
+`Stop-Process` nem `taskkill` derrubam, porque não há o que interromper. Ele sai
+no próximo reboot.
+
+Recuperar:
+
+```powershell
+powercfg /change standby-timeout-ac 0      # antes de tudo, para nao repetir
+powercfg /change hibernate-timeout-ac 0
+py -m lab.finetune.train --name ideraldo --resume
+py -m lab.finetune.watch --name ideraldo
+```
+
+Perde-se apenas as épocas desde o último checkpoint.
+
+**Um cuidado ao verificar se voltou:** o Lightning escreve no log ao fim de cada
+época. Se a época leva 60 s e você mede o log a cada 45 s, vê zero e conclui que
+travou de novo. Conte épocas, não bytes.

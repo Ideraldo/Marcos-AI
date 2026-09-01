@@ -77,6 +77,25 @@ Corpus ampliado para 315 frases. **Dataset final: 315 gravações, 30,9 min.**
 | Épocas | 368 rodadas | 1000 planejadas |
 | Export | manual | automático a cada 100 épocas |
 
+Medição na época 531, com a métrica já corrigida:
+
+| | v1 (ep318) | **v2 (ep531)** |
+|---|---|---|
+| Corpus | 11,3% | 14,6% |
+| Holdout | 39,7% | **26,8%** |
+| Distância | +28,4% | **+12,2%** |
+| Base, no mesmo holdout | 22,9% | 19,1% |
+
+O holdout caiu 13 pontos e a distância caiu pela metade. Os erros que restam são
+de articulação — nasais, sibilantes, siglas — e não de memorização: subtreino,
+não overfit.
+
+> **A métrica tinha dois defeitos, corrigidos aqui.** "18h45" virava
+> `dezoitohquarenta` e "R$ 2.300" virava `dois trezentos`, porque a pontuação
+> saía antes de os números serem soletrados. E a amostra "dentro do domínio"
+> tinha seis frases: duas medições do mesmo modelo deram 17,4% e 26,9%, variação
+> suficiente para virar o diagnóstico. São 20 frases agora.
+
 > O VITS tem amostragem estocástica: a mesma época 113 mediu 39,2% numa rodada e
 > 34,4% noutra, uns ±5 pontos de ruído. A queda do corpus está muito além disso.
 
