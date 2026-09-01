@@ -85,6 +85,7 @@ py -m lab.run_tts --engine piper --voice pt_BR-jeff-medium --play
 | `--engine` | `piper` `kokoro` `mms` `edge` | obrigatório |
 | `--voice` | ver tabela abaixo | a primeira do motor |
 | `--phrase` | `curta` `hora` `numeros` `estrangeirismo` `pergunta` `longa` `acentos` `all` | `all` |
+| `--text` | qualquer texto entre aspas | — |
 | `--play` | toca cada resultado | desligado |
 | `--speaker` | dispositivo de saída | o salvo |
 | `--pick` | escolher a saída agora | desligado |
@@ -101,6 +102,12 @@ py -m lab.run_tts --engine piper --voice pt_BR-jeff-medium --play
 
 Saída em `lab/out/tts/<motor_voz>/`. O `--keep-rate` serve para julgar a
 qualidade nativa do motor; sem ele tudo cai para os 16 kHz do pipeline.
+
+> **Ao julgar uma voz de fine-tune, cuidado com o conjunto fixo.** Duas das sete
+> frases — `curta` e `acentos` — estão no corpus de treino, e um modelo que
+> decorou soa bem nelas. Para ouvir texto que ele nunca viu, use `--text "..."`
+> ou `py -m lab.finetune.generalize --voice X --play`, que toca as 15 frases do
+> holdout.
 
 ---
 

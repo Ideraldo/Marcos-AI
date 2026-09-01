@@ -33,6 +33,10 @@ def main() -> None:
     parser.add_argument("--engine", required=True, choices=sorted(ENGINES))
     parser.add_argument("--voice", help="engine-specific voice/model id")
     parser.add_argument("--phrase", default="all", help=f"{'|'.join(PHRASES)}|all")
+    parser.add_argument(
+        "--text",
+        help="falar um texto qualquer em vez do conjunto fixo (use aspas)",
+    )
     parser.add_argument("--play", action="store_true", help="play each result")
     parser.add_argument("--speaker", help="output device: index or part of the name")
     parser.add_argument("--pick", action="store_true", help="choose the speaker interactively")
@@ -50,7 +54,16 @@ def main() -> None:
     if args.play:
         speaker = ensure("output", args.speaker, ask=args.pick)
         print(f"\nalto-falante: {describe(speaker)}")
-    keys = list(PHRASES) if args.phrase == "all" else [args.phrase]
+    # Texto livre entra como se fosse mais uma frase do conjunto: o resto do
+    # runner nao precisa saber a diferenca. Serve para ouvir a voz em algo que
+    # ela nunca treinou -- duas das sete frases fixas estao no corpus do
+    # fine-tune, entao elas sozinhas lisonjeiam um modelo que decorou.
+    phrases = dict(PHRASES)
+    if args.text:
+        phrases = {"texto": args.text}
+        keys = ["texto"]
+    else:
+        keys = list(PHRASES) if args.phrase == "all" else [args.phrase]
 
     # Load the model on a throwaway phrase. Otherwise the first row carries the
     # startup cost and looks like the engine is slow -- on the Pi the model is
@@ -66,7 +79,7 @@ def main() -> None:
     directory = OUT / slug(engine.name)
     total_synth = total_audio = 0.0
     for key in keys:
-        text = PHRASES[key]
+        text = phrases[key]
         started = time.perf_counter()
         samples, rate = engine.synthesize(text)
         elapsed = time.perf_counter() - started
