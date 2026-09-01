@@ -330,8 +330,11 @@ com o WER do próprio corpus:
 | baixo | alto | **decorou** | voltar checkpoint / gravar mais |
 | baixo | baixo | **saudável** | pronto |
 
-> O VITS tem amostragem estocástica: espere ±5 pontos de variação entre rodadas
-> da mesma voz. Só confie em diferenças bem maiores que isso.
+> **A medição usa síntese determinística.** O VITS amostra ruído a cada geração,
+> e sem desligar isso a mesma voz mede WER diferente a cada rodada — vimos nove
+> pontos de diferença, o bastante para inverter um diagnóstico. O `generalize`
+> zera `noise_scale` e `noise_w_scale`; para **ouvir**, use o `run_tts`, que
+> mantém o ruído normal e deixa a voz soar viva.
 
 ---
 

@@ -255,6 +255,22 @@ Vai mal nos dois, com distância moderada. O modelo já saiu da articulação li
 da base e ainda não chegou na do usuário — que é exatamente o que se ouve: timbre
 reconhecível, mas robótico.
 
+### A régua precisa ser determinística
+
+O VITS amostra ruído a cada geração. É o que faz a voz soar viva em vez de
+robótica — e o que torna impossível comparar duas versões dela.
+
+Antes de descobrir isso, a **mesma** época 734 mediu 26,6% e 35,7% de holdout em
+duas rodadas. Nove pontos sem nada ter mudado no modelo, e esse ruído chegou a
+condenar a época 996 como "decorou" quando ela era a melhor de todas.
+
+O `generalize` usa `PiperTTS(deterministic=True)`, que zera `noise_scale` e
+`noise_w_scale`. A prova de que resolveu está na medição da voz base: 14,6% em
+todas as rodadas, contra 14,6–23,6% antes.
+
+**Medir com determinismo, ouvir com o ruído normal.** O `run_tts` mantém a
+amostragem ligada de propósito — é o que faz a voz parecer gente.
+
 ### O que vigiar ao longo do treino
 
 Rode a cada algumas centenas de épocas e guarde a série. O padrão saudável é as

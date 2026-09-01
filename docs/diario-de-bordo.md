@@ -772,44 +772,191 @@ que ninguém nunca gravou.
 
 ---
 
+## Dia 4 (continuação) — O Marcos ganhou voz, e a régua estava torta
+
+O dia que começou com um treino morto terminou com o assistente falando comigo
+com a minha própria voz. No meio, a ferramenta de medição me enganou pela
+terceira vez — e dessa foi a pior.
+
+### Ouvindo o treino, e uma armadilha nas frases de teste
+
+Perguntei se o comando de ouvir usava frases novas. Não usava: são as sete fixas
+da bancada, e **duas delas estão no corpus de treino**. Um modelo que decorou soa
+bem justamente nessas.
+
+Ganhou um `--phrase novas`, que filtra comparando com o corpus de verdade — se um
+dia eu gravar mais frases, a lista se ajusta sozinha.
+
+### O assistente fala
+
+Esse foi o marco do dia. Até então o Marcos respondia por texto na tela; agora
+responde **falando, com a voz treinada**.
+
+O desenho segue a decisão D1: o gateway manda a resposta **frase por frase**,
+conforme o LLM escreve, e o dispositivo sintetiza e toca. Nenhum áudio atravessa
+a rede — uma interação custa alguns KB em vez dos ~250 KB que o plano previa.
+
+Três detalhes que decidiram a implementação:
+
+- **A síntese roda em thread separada.** Piper e a placa de som bloqueiam, e
+  travar o laço de eventos enquanto fala impediria o barge-in — que depende
+  justamente de continuar ouvindo durante a fala.
+- **O stream de áudio abre uma vez, não por fala.** Abrir o dispositivo a cada
+  enunciado custa centenas de milissegundos em alguns drivers, fatia grande de um
+  orçamento medido em centenas de milissegundos.
+- **A voz vem de configuração**, nunca do código. No PC aponta para a bancada; na
+  Pi vai apontar para o diretório dela.
+
+Medido: **primeiro chunk de áudio 0,32 s depois do texto chegar**, dentro dos
+150–400 ms do orçamento e com folga para a Pi.
+
+### O teste ponta a ponta que matou o treino
+
+Quis testar o loop completo e o Ollama estourou o tempo limite — a GPU estava
+ocupada treinando. Tornei o limite configurável (`LLM_TIMEOUT`), subi para 600 s,
+e funcionou:
+
+```
+voce: oi, quem e voce? responda em uma frase curta
+  marcos> Sou o BMO, o assistente de voz pessoal, aqui para ajudar...
+```
+
+Funcionou — e **matou o treino**. Uns minutos depois, `CUDA error: out of
+memory`: o `llama3.1:8b` tinha entrado na mesma placa de 6 GB. O treino morreu na
+época 828.
+
+`ollama stop llama3.1:8b` devolveu a GPU (5510 → 919 MiB) e o `--resume` retomou
+da 828. Custou umas 50 épocas e uma lição óbvia em retrospecto: **não rodar o
+Ollama enquanto o fine-tune trabalha**.
+
+A decomposição de latência daquele teste, ainda assim, foi reveladora:
+
+```
+turn stt=0ms llm_first_token=25776ms primeira_frase=4747ms resposta=221ms
+```
+
+Tudo que não é LLM custou **221 ms**. O gargalo é inteiramente o modelo — e
+aquele número era CPU, com a GPU ocupada.
+
+### Ele disse "Sou o BMO"
+
+Foi ouvindo isso que decidi o nome. O repositório se chama Marcos-AI e o código
+ainda dizia BMO, herdado do plano. Renomeado: `device_id`, loggers, e o system
+prompt.
+
+Junto vieram três decisões que estavam paradas: **STT começa pelo mais rápido** e
+troca se doer; **sem VPS por enquanto**, porque nada do que falta depende dela; e
+**LLM segue open source** via Ollama, com a interface `LLMProvider` como ponto de
+troca.
+
+Perguntei também como a Pi saberia o que processar local e o que mandar para o
+servidor. A resposta é a peça que ainda não existe: o **roteador de intenções**.
+Ele trabalha sobre texto — por isso o STT precisa ser local. É a mesma
+contradição do plano que a minha pergunta sobre mp3 destravou no Dia 2, vista de
+outro ângulo.
+
+### Gravar mais não custa recomeçar
+
+Perguntei se gravar mais áudio obrigaria a retreinar do zero. Não obriga — e a
+ferramenta já existia, só apontava para o lugar errado.
+
+O `prepare`, que arruma um checkpoint publicado, faz o mesmo trabalho com o meu
+próprio treino: mantém os pesos, zera o contador de época, descarta o otimizador.
+`--from-run` foi tudo que faltou.
+
+Isso muda o cálculo de gravar mais: em vez de "vale a pena refazer 11 horas de
+GPU por 15 minutos de áudio?", vira "vale a pena gravar 15 minutos?".
+
+### A régua torta
+
+E aí veio o pior erro do dia, que era meu há três dias sem eu saber.
+
+Com o treino terminado, medi a época final para escolher a voz oficial. O
+veredito: **DECOROU**. Corpus 10,4%, holdout 30,6%, distância +20,3%. Parecia
+claro — treinou demais e memorizou.
+
+Por precaução, remedi a época 734 nas mesmas condições. Ela tinha medido 26,6% de
+holdout algumas horas antes. Deu **35,7%**.
+
+Nove pontos de diferença no mesmo modelo, no mesmo arquivo, sem nada ter mudado.
+O ruído estava dominando tudo, e foi ele que condenou a época 996.
+
+A causa: o VITS **amostra ruído a cada geração**. É o que faz a voz soar viva em
+vez de robótica — e o que torna impossível comparar duas versões dela. Zerando
+`noise_scale` e `noise_w_scale`, a síntese vira reprodutível.
+
+A prova de que funcionou está na coluna da base, que antes oscilava entre 14,6% e
+23,6% e passou a medir **14,6% em todas as cinco rodadas**.
+
+### O resultado, medindo direito
+
+| Época | Corpus | Holdout | Distância |
+|---|---|---|---|
+| 531 | 13,8% | 25,7% | +11,9% |
+| 734 | 15,7% | 29,3% | +13,6% |
+| 859 | 15,6% | 28,4% | +12,8% |
+| 933 | 10,5% | 27,5% | +17,0% |
+| **996** | 14,6% | **23,8%** | **+9,2%** |
+
+**A época final ganha nos dois critérios.** O oposto do que eu tinha dito vinte
+minutos antes. Treinar até o fim valeu.
+
+Ela virou a voz oficial do Marcos. Meu veredito ouvindo: *não ficou perfeito, mas
+está convincente*.
+
+*Terceira vez que a medição erra antes do modelo: no Dia 3 ela mandou parar um
+treino saudável, de manhã contava "18h45" como erro, e agora condenou a melhor
+época. Fica a regra: **medir com determinismo, ouvir com o ruído normal.***
+
+### Também hoje
+
+- **Auditoria da referência de comandos** contra o `--help` real de cada script.
+  Todos os flags apareciam, mas três só de passagem.
+- **D12: modelos e gravações ficam fora do repositório.** São 32 GB contra 496 KB
+  de histórico versionado — mas o motivo que pesa mais é outro: o `.onnx` treinado
+  **é a minha voz**, e o dataset são 30 minutos dela limpos e transcritos. O
+  repositório é público. Fica em aberto o backup privado do dataset, que hoje
+  existe só no meu disco.
+
+---
+
 ## Onde estamos agora
 
-**Treino v2 em andamento**, retomado da época 535 depois de travar de madrugada
-por suspensão do PC. Fine-tune do `pt_BR-dii-high` com 30,9 min de áudio,
-learning rate 1e-4, alvo de 1000 épocas.
+**O Marcos fala com a minha voz, e o loop roda ponta a ponta.** Digito uma
+pergunta, o gateway consulta o LLM, devolve a resposta frase por frase, e o
+dispositivo sintetiza e fala.
 
-Última medição, época 531: holdout **26,8%** contra 39,7% do v1, e distância
-corpus↔holdout de **+12,2%** contra +28,4%. Melhorou dos dois lados. A voz ainda
-soa robótica, e os erros são de articulação (nasais, sibilantes, siglas) — o que
-indica subtreino, não memorização.
-
-O v1 está arquivado em `lab/finetune/arquivo/v1-decorou/`, seis gerações em
-`.onnx`, para o vídeo.
+A voz oficial é a **época 996** do fine-tune v2, com 30,9 min de áudio e learning
+rate 1e-4. Medida com síntese determinística: holdout 23,8% contra 14,6% da base.
 
 Fechado até aqui:
 
 | | Escolha | Por quê |
 |---|---|---|
-| Arquitetura | Dois processos, WebSocket | Migrar = trocar URL |
-| LLM | API na VPS (Ollama local em dev) | Único que não cabe na Pi |
-| STT | faster-whisper (tamanho a definir na Pi) | 9,0% WER, 2,2% em comandos |
-| TTS | Piper — jeff e cadu aprovadas | RTF 0,05, offline |
-| Voz própria | Fine-tune do `pt_BR-dii-high` | Único caminho com timbre **e** velocidade |
-| Locutor | ECAPA-TDNN | Cadastro, não treino |
+| Nome | Marcos (D8) | o repositório já se chamava assim |
+| Arquitetura | Dois processos, WebSocket | migrar = trocar URL |
+| Rede | só texto (D7) | alguns KB por interação, e fala offline |
+| LLM | open source via Ollama (D11) | preferência; `LLMProvider` é o ponto de troca |
+| STT | faster-whisper, tamanho a decidir na Pi (D9) | começar pelo rápido, trocar se doer |
+| TTS | Piper, voz própria treinada (D4) | RTF 0,05, offline, timbre próprio |
+| Locutor | ECAPA-TDNN | cadastro, não treino |
+| VPS | adiada (D10) | nada do que falta depende dela |
+| Binários | fora do git (D12) | 32 GB, e o `.onnx` é a minha voz |
 
-Próximo passo imediato:
+**Fase 0 cumprida além do previsto.** O critério era o loop em dois processos;
+temos LLM real e voz própria. Falta só o STT sair do stub.
 
-1. Reiniciar o PC quando der, para limpar o processo zumbi que está deixando cada
-   época em 60 s em vez de 19 s. Retomar com `--resume`.
-2. Medir de novo lá pela época 800: o que se quer é o holdout continuando a cair
-3. Se o holdout empacar em ~27%: `--lr 5e-5`, depois bloco 4, depois batch maior
+Próximo marco: **Fase 2 — alarmes e timers locais, com o roteador de intenções.**
+É o núcleo da substituição da Alexa, a única parte que precisa sobreviver a uma
+queda de internet, e o plano a coloca antes do rosto e do wake word de propósito.
+Não depende de hardware nem de VPS.
 
 Em aberto:
 
-- Qual tamanho de STT cabe na Pi — decidido começar pelo mais rápido (D9), mas o
-  número só sai medindo lá
+- Backup privado do dataset, que hoje existe só num disco
+- Qual tamanho de STT cabe na Pi — só medindo lá
 - Se um modelo aberto de 8B dá conta de busca fundamentada (D11)
-- Qual época do fine-tune fica como definitiva
+- Se um bloco 4 de gravações vale a pena (o `prepare --from-run` já deixa barato)
 
 Ainda não começou: roteador de intenções, alarmes locais, rosto, wake word, VPS,
 hardware.
