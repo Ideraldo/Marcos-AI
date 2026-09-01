@@ -16,6 +16,7 @@ py -m lab.devices                     # confirme o microfone antes
 py -m lab.finetune.record
 py -m lab.finetune.record --status    # quanto já tem
 py -m lab.finetune.check              # procura takes ruins antes de treinar
+py -m lab.finetune.generalize --voice pt_BR-ideraldo-medium --against pt_BR-dii-high
 py -m lab.finetune.record --review 12 # ouvir e refazer a frase 12
 py -m lab.finetune.record --redo 1-10  # apagar as 10 primeiras e regravar
 py -m lab.finetune.record --reset     # apagar tudo e comecar de novo
@@ -129,6 +130,73 @@ comparado com as demais nas mesmas frases.
 **Todo esse caminho já foi testado ponta a ponta** com uma época de treino: o
 checkpoint preparado carrega, o treino roda na GPU, o export sai e a voz
 resultante sintetiza a RTF 0,06.
+
+---
+
+## 4. O risco real: decorar em vez de aprender
+
+Com 15 minutos de áudio e 203 frases, existe um risco concreto: em vez de
+aprender o seu **timbre**, o modelo decora as suas **frases**. Ele soaria ótimo
+dizendo "Timer de dez minutos" e desmoronaria em qualquer texto novo — que é
+exatamente o que o assistente vai falar o dia inteiro, já que a resposta do LLM
+nunca é uma frase pré-escrita.
+
+```powershell
+py -m lab.finetune.generalize --voice pt_BR-ideraldo-medium --against pt_BR-dii-high
+py -m lab.finetune.generalize --voice pt_BR-ideraldo-medium --play   # ouvir também
+```
+
+### Como funciona
+
+Sintetiza 15 frases que **nunca foram gravadas** (`holdout.py` — nomes próprios,
+siglas, estrangeirismos, trava-línguas, uma frase de três linhas) e transcreve o
+resultado **de volta** com o Whisper. Se a voz articula, o STT entende; se
+desmonta em texto novo, o WER sobe e mostra onde.
+
+Não substitui o ouvido: um modelo pode soar metálico e ainda ser transcrito
+perfeitamente. Mas pega o que o ouvido deixa passar — uma sílaba comida no meio
+de uma palavra longa, um número lido errado, um nome próprio virando outra coisa
+— e dá um número comparável entre épocas.
+
+### Por que ele mede o corpus também
+
+Esse foi um erro de projeto que só apareceu ao rodar. A primeira versão olhava só
+o WER do holdout e gritava "overfitting" — mas **WER alto em texto novo não
+distingue duas doenças opostas**:
+
+| | Corpus | Holdout | O que fazer |
+|---|---|---|---|
+| **Decorou** | baixo | alto | Voltar a um checkpoint anterior; passou do ponto |
+| **Ainda cru** | alto | alto | **Treinar mais**; é o estado normal no começo |
+
+A diferença entre as duas está na *distância* entre as colunas, não no valor de
+nenhuma. E as decisões são opostas: uma manda parar, a outra manda continuar.
+
+Medido na época 113 deste treino:
+
+```
+corpus (frases treinadas):  WER 26.3%
+holdout (nunca gravadas):   WER 39.2%
+distancia entre os dois:    +12.8%
+a base, no mesmo holdout:   WER 20.9%
+
+=> AINDA CRU
+```
+
+Vai mal nos dois, com distância moderada. O modelo já saiu da articulação limpa
+da base e ainda não chegou na do usuário — que é exatamente o que se ouve: timbre
+reconhecível, mas robótico.
+
+### O que vigiar ao longo do treino
+
+Rode a cada algumas centenas de épocas e guarde a série. O padrão saudável é as
+duas colunas caindo juntas. O sinal de parada é a **distância abrindo**: corpus
+continua caindo e holdout empaca ou sobe.
+
+O `val_mel` que aparece no nome dos checkpoints ajuda, porque o Lightning já
+calcula sobre uma fatia separada do dataset — quando ele para de cair e começa a
+subir, é o mesmo aviso. Mas ele mede semelhança com as suas gravações, não se a
+voz lê bem um texto qualquer. Por isso o teste de holdout existe.
 
 ---
 
