@@ -78,19 +78,33 @@ def accepted_hyperparameters() -> set[str]:
     }
 
 
-def prepare(base: str) -> Path:
+def prepare(base: str, source: Path | None = None, name: str | None = None) -> Path:
+    """Prepara um checkpoint para servir de ponto de partida de um treino novo.
+
+    Serve para dois casos, e é o mesmo trabalho nos dois:
+
+    * um checkpoint publicado (o padrão), que precisa ser destravado do Linux e
+      ter a época zerada;
+    * **o seu próprio treino**, quando você grava mais áudio e quer continuar de
+      onde chegou em vez de recomeçar do zero. Os pesos aprendidos ficam; o
+      contador e o otimizador vão embora, porque pertencem ao treino antigo, com
+      o dataset antigo.
+
+    O segundo caso é o que evita jogar fora horas de GPU só porque o dataset
+    cresceu.
+    """
     import torch
 
-    source = CHECKPOINTS / f"{base}.ckpt"
+    source = source or CHECKPOINTS / f"{base}.ckpt"
     if not source.exists():
         raise SystemExit(f"nao encontrei {source}")
 
-    destination = CHECKPOINTS / f"{base}-finetune.ckpt"
+    destination = CHECKPOINTS / f"{name or base}-finetune.ckpt"
     checkpoint = load_posix_checkpoint(source)
 
     epoch = checkpoint.get("epoch")
     step = checkpoint.get("global_step")
-    print(f"  origem: epoch {epoch}, step {step}")
+    print(f"  origem: {source.name} (epoch {epoch}, step {step})")
 
     allowed = accepted_hyperparameters()
     saved = stringify(checkpoint.get("hyper_parameters", {}))
@@ -122,9 +136,22 @@ def prepare(base: str) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="preparar checkpoint base para fine-tune")
-    parser.add_argument("--base", default="pt_BR-dii-high")
+    parser.add_argument("--base", default="pt_BR-dii-high", help="voz base publicada")
+    parser.add_argument(
+        "--from-run",
+        metavar="NOME",
+        help="partir do seu proprio treino em vez de uma voz publicada",
+    )
+    parser.add_argument("--as", dest="name", help="nome do checkpoint preparado")
     args = parser.parse_args()
-    prepare(args.base)
+
+    if args.from_run:
+        from lab.finetune.train import OUTPUT, latest_run_checkpoint
+
+        source = latest_run_checkpoint(OUTPUT / args.from_run)
+        prepare(args.base, source=source, name=args.name or args.from_run)
+    else:
+        prepare(args.base)
 
 
 if __name__ == "__main__":

@@ -229,7 +229,8 @@ py -m lab.finetune.train --name ideraldo --resume     # depois de interromper
 | `--resume` | — | retoma com otimizador e época intactos |
 
 O preparo do checkpoint base roda sozinho na primeira vez
-(`lab.finetune.prepare --base X` para forçar). Ele resolve PosixPath,
+(`lab.finetune.prepare --base X` para forçar; `--from-run NOME` parte do seu
+próprio treino). Ele resolve PosixPath,
 `weights_only` e o contador de época — sem isso o treino encerra na hora sem
 fazer nada.
 

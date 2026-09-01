@@ -175,7 +175,33 @@ resultante sintetiza a RTF 0,06.
 
 ---
 
-## 4. O risco real: decorar em vez de aprender
+## 4. Gravar mais depois, sem recomeçar do zero
+
+Se um dia você gravar um bloco novo, os pesos já treinados não precisam ser
+jogados fora:
+
+```powershell
+py -m lab.finetune.record            # o bloco novo
+py -m lab.finetune.prepare --from-run ideraldo --as ideraldo-v2
+py -m lab.finetune.train --base ideraldo-v2 --name ideraldo3
+```
+
+O `prepare` faz com o seu treino o mesmo que faz com um checkpoint publicado:
+mantém os pesos, zera o contador de época e descarta o otimizador — que pertence
+ao treino antigo, com o dataset antigo, e cujo momento acumulado atrapalharia
+em vez de ajudar.
+
+Você recomeça já com o timbre pronto, e as épocas novas servem só para absorver
+o material novo.
+
+> **Não é óbvio que seja melhor que retreinar do `dii-high`.** Continuar economiza
+> horas, mas o modelo já se acomodou nas frases atuais; partir do zero daria o
+> mesmo peso ao material velho e ao novo. Com o `generalize` medindo os dois, dá
+> para responder isso com número em vez de opinião.
+
+---
+
+## 5. O risco real: decorar em vez de aprender
 
 Com 15 minutos de áudio e 203 frases, existe um risco concreto: em vez de
 aprender o seu **timbre**, o modelo decora as suas **frases**. Ele soaria ótimo
@@ -242,7 +268,7 @@ voz lê bem um texto qualquer. Por isso o teste de holdout existe.
 
 ---
 
-## 5. Estratégias contra o overfitting
+## 6. Estratégias contra o overfitting
 
 O que está configurado hoje, por que, e o que foi descartado. O v1 decorou com
 15 min de áudio nos padrões do Piper; estas são as alavancas que existem.
