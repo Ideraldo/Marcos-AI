@@ -1,5 +1,9 @@
 # lab — bancada de testes de STT e TTS
 
+> **Procurando um comando ou um parâmetro?** Está tudo em
+> [`docs/comandos.md`](docs/comandos.md). Este arquivo explica o *porquê*;
+> aquele responde o *como*.
+
 Não roda em produção. É onde os motores são medidos antes de virarem uma
 implementação de verdade. Pela decisão [D1](../docs/decisions.md), o vencedor de
 cada lado vai morar no `device/`, não no `gateway/`: o roteador de intenções

@@ -15,7 +15,7 @@ deu errado no caminho**.
 
 ---
 
-## Os quatro documentos e seus papéis
+## Os cinco documentos e seus papéis
 
 Nunca misturar. Cada um tem uma função e um tom.
 
@@ -25,6 +25,7 @@ Nunca misturar. Cada um tem uma função e um tom.
 | `docs/decisions.md` | Decisões fechadas: o quê e o porquê | Seco, numerado (D1, D2…) | Só se uma decisão foi fechada |
 | `docs/diario-de-bordo.md` | A história: dúvidas, tentativas, falhas | Narrativo, primeira pessoa | **Sempre** |
 | `lab/RESULTS.md` | Números medidos de STT/TTS | Tabelas | Só se houve medição nova |
+| `lab/docs/comandos.md` | Como rodar cada script, com os parâmetros | Referência | Só se um comando mudou |
 
 **O ultraplan não se reescreve, em nenhuma hipótese.** Ele registra o que se
 sabia quando foi escrito, e essa é justamente a utilidade dele. Se a construção
@@ -108,8 +109,12 @@ Só o que se aplicar:
   `lab/RESULTS.md`, incluindo a coluna subjetiva se o usuário deu opinião.
 - **Estrutura de pastas mudou** → `docs/repository-structure.md` e o `README.md`
   da raiz.
-- **Comando novo ou alterado** → o `README.md` da pasta correspondente
-  (`lab/README.md`, `lab/finetune/README.md`).
+- **Comando novo ou alterado, ou parâmetro adicionado** → `lab/docs/comandos.md`,
+  que é a referência única de como rodar cada coisa, **e** o `README.md` da pasta
+  correspondente (`lab/README.md`, `lab/finetune/README.md`), que explica o
+  porquê. Verifique o texto contra o `--help` real do script em vez de escrever
+  de memória: parâmetro documentado errado custa mais que parâmetro não
+  documentado.
 
 Regra geral: se um `.md` descreve algo que mudou hoje, ele entra no mesmo commit.
 

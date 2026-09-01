@@ -151,6 +151,7 @@ lab/
   numbers.py     soletra dígitos: "10" e "dez" precisam pontuar igual
   audio.py       wav, playback, gravação de microfone
   out/  models/  áudio gerado e modelos baixados (fora do git)
+  docs/          referência de comandos e parâmetros de todos os scripts
   RESULTS.md     o veredito, com a avaliação subjetiva
 ```
 

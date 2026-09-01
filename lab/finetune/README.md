@@ -1,5 +1,7 @@
 # Fine-tune do Piper com a sua voz
 
+> Referência rápida de comandos e parâmetros: [`../docs/comandos.md`](../docs/comandos.md).
+
 Objetivo: um modelo Piper de ~60 MB com o seu timbre, rodando a RTF 0,05 na Pi.
 É o único caminho que entrega voz personalizada **e** velocidade — clonagem
 zero-shot (XTTS, F5) dá timbre mas não roda em ARM.

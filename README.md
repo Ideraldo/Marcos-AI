@@ -7,6 +7,7 @@ up portability.
 - `docs/decisions.md` — where the build diverged from it, and why
 - `docs/diario-de-bordo.md` — the narrative: doubts, attempts, what broke
 - `lab/RESULTS.md` — measured numbers for every STT and TTS candidate
+- `lab/docs/comandos.md` — every bench command and flag, in one place
 
 ## Layout
 
