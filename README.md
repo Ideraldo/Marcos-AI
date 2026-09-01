@@ -72,6 +72,11 @@ Pick the microphone with `AUDIO_INPUT_DEVICE` (a name fragment is enough) --
 whatever Windows picked by default is often a headset that is not plugged in,
 and a silent recording looks exactly like a broken model.
 
+If the gateway goes away mid-conversation, the device does not: it reconnects
+with growing backoff and goes back to listening (D14). What it does not get back
+is the answer to that turn -- history lives in the gateway's session and dies
+with the connection. A rejected token is the one failure that is not retried.
+
 Swapping the LLM later touches one function, `build_llm` in `gateway/main.py`.
 
 ```powershell
@@ -100,3 +105,24 @@ in `docs/voz-e-locutor.md`:
 .\.venv\Scripts\python.exe -m lab.run_speaker enroll Ideraldo
 .\.venv\Scripts\python.exe -m lab.run_speaker who
 ```
+
+## What comes next
+
+**Phase 2 -- local alarms and timers, with the intent router.** The core of
+replacing the Alexa, and the only part that has to survive an internet outage.
+It depends on neither hardware nor a VPS.
+
+**Then: portable translator mode.** Speak Portuguese, have the device speak
+English or Chinese, and the reverse. Two of the three pieces already exist --
+Whisper is multilingual by nature, Piper has a voice per language -- so what is
+missing is machine translation in the middle. The candidate is **opus-mt on
+CTranslate2**, the same runtime `faster_whisper` already uses. NLLB-200 600M is
+recorded as a quality ceiling and a **non-candidate on the device**: it is
+autoregressive over 600M parameters on four ARM cores, which is what ruled out a
+local LLM on day 1.
+
+**The biggest open question is the hardware.** Every number so far was measured
+on a PC. Nothing has run on a Pi yet -- not even Whisper -- and moving from the
+bench to real device code already pushed RTF from 0.43 to 0.6-0.9.
+
+The reasoning behind all of it is in `docs/diario-de-bordo.md`.
