@@ -14,7 +14,7 @@ from gateway.api.session import Session  # noqa: E402
 from gateway.config import config  # noqa: E402
 from gateway.llm.base import LLMProvider  # noqa: E402
 from gateway.llm.ollama import OllamaProvider  # noqa: E402
-from gateway.tools import SpotifyClient  # noqa: E402
+from gateway.tools import Brave, DuckDuckGo, SearchProvider, SpotifyClient  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
@@ -60,7 +60,38 @@ def build_spotify() -> SpotifyClient | None:
     return client
 
 
+def build_search() -> SearchProvider | None:
+    """O provedor de busca, ou None se não houver como usá-lo.
+
+    O padrão (`duckduckgo`) não precisa de nada: é o que garante que a
+    fundamentação funcione numa instalação limpa. `brave` precisa de chave, e
+    sem ela a ferramenta é desligada em vez de falhar em uso -- oferecer uma
+    ferramenta que vai dar erro é pior que não ter ferramenta (D19).
+    """
+    escolhido = config.search_provider.lower()
+    if escolhido in ("none", "off", ""):
+        logging.info("busca: desligada por configuracao")
+        return None
+    if escolhido == "brave":
+        if not config.search_api_key:
+            logging.warning("busca: SEARCH_PROVIDER=brave sem SEARCH_API_KEY; desligada")
+            return None
+        logging.info("busca: brave")
+        return Brave(api_key=config.search_api_key)
+    if escolhido == "duckduckgo":
+        try:
+            import ddgs  # noqa: F401
+        except ImportError:
+            logging.warning("busca: falta `pip install ddgs`; desligada")
+            return None
+        logging.info("busca: duckduckgo")
+        return DuckDuckGo(regiao=config.search_region)
+    logging.warning("busca: SEARCH_PROVIDER=%r desconhecido; desligada", escolhido)
+    return None
+
+
 spotify = build_spotify()
+search = build_search()
 
 
 @app.get("/health")
@@ -69,6 +100,7 @@ async def health() -> dict[str, str]:
         "status": "ok",
         "llm": f"{config.llm_provider}:{config.llm_model}",
         "spotify": "on" if spotify is not None else "off",
+        "busca": getattr(search, "nome", "off"),
     }
 
 
@@ -79,5 +111,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         llm=build_llm(),
         expected_token=config.device_token,
         spotify=spotify,
+        search=search,
     )
     await session.run()

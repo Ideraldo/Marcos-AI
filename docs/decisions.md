@@ -955,3 +955,67 @@ para não ser "otimizado" depois.
   mesmo problema do barge-in da Fase 7 (interromper o assistente falando), e
   resolver os dois juntos é mais barato que separado.
 - O `librespot` exige Premium, que a conta já tem (verificado em D21).
+
+---
+
+## D24 — Busca na internet, sem chave, e a primeira ferramenta não-terminal
+
+**Data:** 2026-09-01
+**O plano diz:** a seção 1 lista "busca na internet com resposta fundamentada"
+como requisito funcional principal, e a Fase 3 a entrega junto com Spotify e
+Home Assistant.
+
+**O que mudou:** `gateway/tools/search.py`, com um `SearchProvider` trocável.
+O padrão é **DuckDuckGo via `ddgs`**, que não exige chave, conta nem cartão.
+`Brave` existe atrás da mesma interface para quem quiser resultado mais estável.
+
+**Por quê o padrão sem chave:** esta ferramenta é a resposta ao defeito do
+[D20](#d20--o-modelo-passa-a-ser-o-qwen38b-com-o-raciocínio-desligado) — o modelo
+alucinando com confiança. Exigir cadastro para a fundamentação funcionar seria
+trocar um problema por outro, e contraria a preferência que já guiou D2 (nada de
+nuvem no caminho crítico) e D11 (modelo aberto). Trocar por Brave é uma variável
+de ambiente.
+
+**É a primeira ferramenta não-terminal.** As de agenda (D18) e as do Spotify
+(D21) devolvem uma frase pronta que vai ao ar como está. Aqui não existe frase
+pronta: existem cinco trechos de páginas, e a resposta falada **tem** que ser
+redigida a partir deles. É o caminho de segunda rodada de LLM, que até agora
+nenhuma ferramenta usava — o mesmo que D18 tinha desligado por perder itens de
+lista. Aqui ele é obrigatório, e é o uso certo dele.
+
+**Resultado, nas perguntas que a bancada do D19 media:**
+
+| | antes (sem busca) | com busca |
+|---|---|---|
+| "quem escreveu Grande Sertão: Veredas" | *"não sei"* | **João Guimarães Rosa** |
+| "quem escreveu O Cortiço" | *"não sei"* | **Aluísio Azevedo** |
+| "distância da Terra até a Lua" | *"não sei"* | **384.400 km** |
+| "capital da Austrália" | Canberra | Canberra, **sem buscar** |
+
+A última linha importa: o modelo não busca quando sabe. Não foi preciso ensinar
+isso — a descrição da ferramenta diz para usar quando não houver certeza, e ele
+respeitou, em 2,1 s contra os 7 a 12 s de um turno com busca.
+
+**Latência.** A busca sozinha mede 1,1 a 3,6 s (a primeira chamada do processo
+custa 17 s, partida a frio). O turno inteiro fica entre 7 e 12 s: busca, mais
+duas rodadas de LLM. Está muito acima do 1,5 s que a seção 11 orça para o nível
+2 — e é um custo que a fundamentação tem, não um defeito a corrigir. Um turno de
+conhecimento sem busca continua em ~2 s.
+
+**Um bug que só a busca revelou:** o gateway quebrava frase em todo `.`, e a
+busca foi a primeira coisa a trazer números formatados. *"384.400 quilômetros"*
+virava duas falas — *"aproximadamente 384."* e *"400 quilômetros."*. Agora ponto
+entre dígitos não encerra frase. Segurar o ponto de "1899." até a frase seguinte
+custa uma fala um pouco mais tarde; partir um número custa uma resposta que soa
+quebrada.
+
+**Consequências:**
+- `ddgs` entra no `requirements-gateway.txt`, que a D15 mantém enxuto. É a
+  primeira dependência do gateway que não é `fastapi`/`httpx`/`dotenv`, e entrou
+  porque `gateway/` a importa — a regra do D15 continua valendo.
+- Sem `ddgs` instalado, ou com `SEARCH_PROVIDER=none`, a ferramenta não é
+  declarada e o `/health` diz `"busca": "off"`. Mesma regra do D19: não oferecer
+  ao modelo o que ele não pode usar.
+- O system prompt ganhou a única instrução específica de formato que existe:
+  responder em uma ou duas frases a partir dos trechos, sem ler a lista nem o
+  endereço do site. Sem ela o modelo lê a numeração em voz alta.

@@ -244,6 +244,21 @@ actually playing on each: phone, Echo Dot, and PC. A device only appears once
 its Spotify app is open and active, which is one more argument for raspotify on
 the Pi -- it announces itself around the clock.
 
+**Web search** is the answer to an 8B model that makes things up. `ddgs`
+(DuckDuckGo) is the default and needs no key, account or card; `SEARCH_PROVIDER=brave`
+swaps it for a keyed one behind the same interface (D24). It is the project's
+first **non-terminal** tool: it returns five page extracts rather than a finished
+sentence, so the model has to write the spoken answer from them.
+
+| | before | with search |
+|---|---|---|
+| "quem escreveu Grande Sertão: Veredas" | *"não sei"* | João Guimarães Rosa |
+| "distância da Terra até a Lua" | *"não sei"* | 384.400 km |
+| "capital da Austrália" | Canberra | Canberra, **without searching** |
+
+It does not search what it already knows -- 2.1s for those, 7-12s for a searched
+turn. Grounding costs time; that is the trade, not a defect.
+
 Home Assistant is out of scope -- one smart bulb does not justify Tailscale and
 phase 5.
 
@@ -279,8 +294,8 @@ in `docs/voz-e-locutor.md`:
 **Phase 1's container is written but never executed** (D15), and its first real
 run will be on the VPS (D16). Nothing else waits on it.
 
-**Web search** -- the last piece of phase 3, and the one that matters most: it
-is the answer to an 8B model that hallucinates (D20).
+**Phase 4 -- the face**: a local web app with the four animated states. Or the
+translator mode. Neither depends on hardware.
 
 **Then: portable translator mode.** Speak Portuguese, have the device speak
 English or Chinese, and the reverse. Two of the three pieces already exist --

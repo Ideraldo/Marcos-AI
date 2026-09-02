@@ -1889,8 +1889,12 @@ A estreia com conta real achou três defeitos que o HTTP falso não pegaria: o 4
 que significa duas coisas, a fila de uma música só, e — o pior — o modelo dizendo
 ter pausado sem pausar (D22).
 
-Próximo: **busca web**, que virou mais urgente do que era quando a ordem foi
-escolhida — é a resposta à alucinação do D20.
+**Busca na internet funcionando**, com DuckDuckGo sem chave e o Brave como troca
+de uma variável (D24). É a resposta à alucinação do D20, e as perguntas que o
+modelo recusava agora vêm respondidas e fundamentadas. Custa caro: 7 a 12 s por
+turno com busca, contra ~2 s sem. É o preço de fundamentar.
+
+**A Fase 3 está entregue**, menos o Home Assistant, que ficou fora de escopo.
 
 Marco seguinte, planejado: **modo tradutor portátil.** Falar português e o
 aparelho falar inglês ou chinês, e o contrário. Duas das três peças já existem —
@@ -1919,6 +1923,64 @@ Em aberto:
 
 Ainda não começou: embeddings no roteador, volume, modo tradutor, rosto, wake
 word, VPS, hardware.
+
+---
+
+## Dia 7 (continuação) — A busca, e o modelo parando de inventar
+
+A última peça da Fase 3, e a que eu mais queria: desde que o modelo disse que
+*Dom Casmurro* é do Mario Quintana, a busca deixou de ser item de lista e virou
+resposta a um defeito que eu vi acontecer.
+
+Escolhi o **DuckDuckGo sem chave** como padrão, com o Brave atrás da mesma
+interface. A razão é a mesma que guiou o D2 e o D11: exigir cadastro para a
+fundamentação funcionar seria trocar um problema por outro ([D24](decisions.md)).
+
+O resultado, nas mesmas perguntas que a bancada do D19 media:
+
+| | antes | com busca |
+|---|---|---|
+| "quem escreveu Grande Sertão: Veredas" | *"não sei"* | **João Guimarães Rosa** |
+| "quem escreveu O Cortiço" | *"não sei"* | **Aluísio Azevedo** |
+| "distância da Terra até a Lua" | *"não sei"* | **384.400 km** |
+| "capital da Austrália" | Canberra | Canberra, **sem buscar** |
+
+A última linha é a que me deixou mais satisfeito. **Ele não busca quando sabe.**
+Não precisei ensinar isso em lugar nenhum — a descrição da ferramenta diz para
+usar quando não houver certeza, e ele respeitou: 2,1 s contra os 7 a 12 s de um
+turno com busca.
+
+### A primeira ferramenta que não devolve a resposta pronta
+
+Todas as anteriores devolvem uma frase que vai ao ar como está — foi a D18 que
+estabeleceu isso, e por um bom motivo. A busca não pode: ela devolve cinco
+trechos de páginas, e a frase falada tem que ser redigida a partir deles. É o
+caminho de segunda rodada de LLM, que eu tinha **desligado** na D18 por perder
+itens de lista, e que aqui é obrigatório.
+
+Ou seja, as duas decisões não se contradizem: cada tipo de ferramenta usa o
+caminho certo para o que ela devolve. Só ficou visível agora que existem os dois
+tipos.
+
+### O bug que só a busca conseguia revelar
+
+```
+marcos> A distância média entre a Terra e a Lua é de aproximadamente 384.
+marcos> 400 quilômetros.
+```
+
+O gateway quebra frase em todo `.` desde o dia 2 — é o que faz o dispositivo
+começar a falar antes de a resposta terminar. E funcionou perfeitamente por seis
+dias, porque **nenhuma resposta anterior tinha número formatado**. A busca foi a
+primeira coisa a trazer "384.400" para dentro do fluxo.
+
+Agora ponto entre dígitos não encerra frase. Segurar o ponto de "1899." até a
+próxima frase custa uma fala um pouco mais tarde; partir um número no meio custa
+uma resposta que soa quebrada.
+
+*Lição para o vídeo: seis dias com um bug que não tinha como aparecer, porque o
+assistente nunca tinha falado um número grande. Cada ferramenta nova não traz só
+uma função — traz um formato de texto que o resto do sistema nunca tinha visto.*
 
 ---
 

@@ -128,3 +128,32 @@ async def test_recusa_audio_subindo_pelo_fio():
 
     assert await session._receive_utterance() == "oi"
     assert [m["type"] for m in socket.textos] == ["error"]
+
+
+class TestQuebraDeFrase:
+    """Onde o gateway decide que ja da para o dispositivo comecar a falar.
+
+    O ponto entre digitos e separador, nao fim de frase. Isto so apareceu
+    quando a busca na internet trouxe numeros formatados: "384.400 quilometros"
+    virava duas falas, "aproximadamente 384." e "400 quilometros."
+    """
+
+    import pytest as _pytest
+
+    @_pytest.mark.parametrize(
+        "texto, quebra",
+        [
+            ("Sao 20 horas.", True),
+            ("Quem escreveu?", True),
+            ("Nao sei!", True),
+            ("Ainda escrevendo", False),
+            ("aproximadamente 384.", False),   # separador de milhar
+            ("O ano foi 1899.", False),        # ponto depois de digito: segura
+            ("384.400 quilometros.", True),    # termina em letra, entao quebra
+            ("", False),
+        ],
+    )
+    def test_decide_certo(self, texto, quebra):
+        from gateway.api.session import _fim_de_frase
+
+        assert _fim_de_frase(texto) is quebra

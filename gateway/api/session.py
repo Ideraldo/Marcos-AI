@@ -32,9 +32,12 @@ from gateway.llm.base import LLMProvider
 from gateway.timing import Turn
 from gateway.tools import (
     DEVICE_TOOLS,
+    SEARCH_TOOL_NAMES,
+    SEARCH_TOOLS,
     SPOTIFY_TOOL_NAMES,
     SPOTIFY_TOOLS,
     TERMINAL_TOOLS,
+    executar_busca,
     executar_spotify,
 )
 
@@ -55,6 +58,25 @@ MAX_TOOL_ROUNDS = 3
 TOOL_TIMEOUT = 10.0
 
 
+def _fim_de_frase(texto: str) -> bool:
+    """O texto acumulado termina numa frase que já dá para falar?
+
+    O ponto entre dígitos **não** encerra frase: é separador de milhar ou
+    decimal. Sem esta checagem, "384.400 quilômetros" saía em duas falas --
+    "aproximadamente 384." e "400 quilômetros." --, o que só apareceu quando a
+    busca na internet começou a trazer números formatados de verdade.
+
+    Segurar o ponto de "1899." até a frase seguinte custa uma fala um pouco mais
+    tarde; partir um número no meio custa uma resposta que soa quebrada. O que
+    sobrar sem quebrar é falado no fim do fluxo, de qualquer forma.
+    """
+    if not texto or texto[-1] not in BREAKS:
+        return False
+    if texto[-1] == "." and len(texto) >= 2 and texto[-2].isdigit():
+        return False
+    return True
+
+
 class Session:
     def __init__(
         self,
@@ -62,6 +84,7 @@ class Session:
         llm: LLMProvider,
         expected_token: str,
         spotify: object | None = None,
+        search: object | None = None,
     ) -> None:
         self._ws = websocket
         self._llm = llm
@@ -71,7 +94,12 @@ class Session:
         # O modelo não vê o que não pode usar -- e um modelo pequeno que vê uma
         # ferramenta indisponível tenta usar mesmo assim (D19).
         self._spotify = spotify
-        self._tools = DEVICE_TOOLS + (SPOTIFY_TOOLS if spotify is not None else [])
+        self._search = search
+        self._tools = (
+            DEVICE_TOOLS
+            + (SPOTIFY_TOOLS if spotify is not None else [])
+            + (SEARCH_TOOLS if search is not None else [])
+        )
 
     async def run(self) -> None:
         await self._ws.accept()
@@ -201,7 +229,7 @@ class Session:
 
                 pending += delta.text
                 full += delta.text
-                if pending[-1] in BREAKS:
+                if _fim_de_frase(pending):
                     await flush(pending)
                     pending = ""
 
@@ -216,8 +244,10 @@ class Session:
                 )
                 break
 
-            if nome in SPOTIFY_TOOL_NAMES:
-                # A única família que o gateway executa: o segredo mora aqui.
+            if nome in SEARCH_TOOL_NAMES:
+                resultado = await executar_busca(self._search, nome, args)
+            elif nome in SPOTIFY_TOOL_NAMES:
+                # O gateway executa: o segredo mora aqui.
                 resultado = await executar_spotify(self._spotify, nome, args)
             else:
                 resultado = await self._run_device_tool(nome, args)

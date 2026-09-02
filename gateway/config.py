@@ -37,6 +37,13 @@ class GatewayConfig:
     # estar em outro comodo. Enquanto a Pi nao existe, o nome nao casa com nada
     # e a escolha cai para o aparelho ativo, como antes.
     spotify_device: str = os.getenv("SPOTIFY_DEVICE", "Marcos")
+    # Busca na internet. O padrao nao exige chave nem conta: e a resposta a um
+    # modelo de 8B que alucina (D20), e cobrar cadastro para isso funcionar
+    # seria trocar um problema por outro. `brave` existe para quem quiser
+    # resultado mais estavel -- ai sim com chave.
+    search_provider: str = os.getenv("SEARCH_PROVIDER", "duckduckgo")
+    search_api_key: str | None = os.getenv("SEARCH_API_KEY")
+    search_region: str = os.getenv("SEARCH_REGION", "br-pt")
     stt_api_key: str | None = os.getenv("STT_API_KEY")
     tts_api_key: str | None = os.getenv("TTS_API_KEY")
 

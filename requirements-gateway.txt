@@ -12,3 +12,5 @@ uvicorn[standard]
 websockets
 httpx
 python-dotenv
+# busca na internet sem chave (D24); o provedor Brave usa so httpx
+ddgs

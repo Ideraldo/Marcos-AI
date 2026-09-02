@@ -99,7 +99,7 @@ gateway/
   tools/           device_tools.py: o LLM pede, o Pi executa (D18)
                    spotify.py: o gateway executa, porque aqui ha segredo (D21)
                    spotify_auth.py: consentimento, roda uma vez
-                   web_search entra aqui
+                   search.py: busca na internet, provedor trocavel (D24)
   data/            refresh token do Spotify -- fora do git
   conversation/    histórico e montagem de contexto
   config.py        segredos e parâmetros — nunca saem do servidor

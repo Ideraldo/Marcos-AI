@@ -14,6 +14,13 @@ item e custa segundos.
 """
 
 from gateway.tools.device_tools import DEVICE_TOOLS, TERMINAL_TOOLS, TOOL_TO_INTENT
+from gateway.tools.search import (
+    SEARCH_TOOLS,
+    Brave,
+    DuckDuckGo,
+    SearchProvider,
+    executar_busca,
+)
 from gateway.tools.spotify import (
     SPOTIFY_TOOLS,
     SpotifyClient,
@@ -25,7 +32,18 @@ from gateway.tools.spotify import (
 #: ("Tocando Construcao, de Chico Buarque.") é a resposta.
 SPOTIFY_TOOL_NAMES = frozenset(t.name for t in SPOTIFY_TOOLS)
 
+#: A busca é a única ferramenta **não-terminal**: o que ela devolve é material
+#: para o modelo ler, não a frase a ser falada. Por isso ela não entra em
+#: nenhuma lista de terminais -- o turno segue para uma segunda rodada de LLM.
+SEARCH_TOOL_NAMES = frozenset(t.name for t in SEARCH_TOOLS)
+
 __all__ = [
+    "SEARCH_TOOLS",
+    "SEARCH_TOOL_NAMES",
+    "SearchProvider",
+    "DuckDuckGo",
+    "Brave",
+    "executar_busca",
     "DEVICE_TOOLS",
     "TERMINAL_TOOLS",
     "TOOL_TO_INTENT",

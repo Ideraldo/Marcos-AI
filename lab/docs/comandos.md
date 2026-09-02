@@ -385,6 +385,8 @@ Variáveis relevantes em `.env`:
 | `SPOTIFY_REDIRECT_URI` | tem que bater com o dashboard; `127.0.0.1`, nunca `localhost` |
 | `SPOTIFY_TOKEN_PATH` / `SPOTIFY_MARKET` | onde o refresh token fica, e o pais da busca |
 | `SPOTIFY_DEVICE` | onde tocar quando ninguem disser onde; aponta para a Pi (D23) |
+| `SEARCH_PROVIDER` | `duckduckgo` (sem chave), `brave` (com `SEARCH_API_KEY`) ou `none` |
+| `SEARCH_REGION` | regiao da busca; `br-pt` |
 
 > **Não rode o Ollama enquanto o fine-tune treina.** Os dois disputam a mesma
 > placa e o treino morre com `CUDA out of memory` — aconteceu. `ollama stop

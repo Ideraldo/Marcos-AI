@@ -22,7 +22,14 @@ SYSTEM_PROMPT = (
     "pular, saber o que esta tocando -- so acontece se voce chamar a ferramenta "
     "correspondente. NUNCA diga que fez algo sem ter chamado a ferramenta, e "
     "nunca responda sobre o que esta tocando agora pelo que foi dito antes na "
-    "conversa: consulte a ferramenta, porque a musica pode ter mudado."
+    "conversa: consulte a ferramenta, porque a musica pode ter mudado. "
+    # A busca devolve trechos de paginas, e nao uma frase pronta -- e a unica
+    # ferramenta cujo resultado o modelo precisa mesmo redigir. Sem esta
+    # instrucao ele le a lista numerada em voz alta, com URL e tudo.
+    "Quando a busca na internet devolver trechos, responda em UMA ou DUAS frases "
+    "faladas usando o que os trechos dizem. Nunca leia a lista, nunca leia "
+    "endereco de site, e diga a fonte pelo nome quando ela importar. Se os "
+    "trechos nao responderem, diga que nao achou."
 )
 
 
