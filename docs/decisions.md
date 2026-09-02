@@ -692,3 +692,77 @@ voz alta, com a minha voz. O 4b foi descartado por esse motivo, não pela nota.
 **Nota de operação:** o modelo tem 5,2 GB e a placa aqui tem 6 GB. Cabe, mas sem
 folga. Quem rodar isto com o fine-tune do Piper ao mesmo tempo vai repetir o
 `CUDA out of memory` que já está registrado no `comandos.md`.
+
+---
+
+## D21 — Spotify é a primeira ferramenta que o gateway executa
+
+**Data:** 2026-09-01
+**O plano diz:** a seção 3 põe `Ferramentas · Segredos · Histórico` no gateway, e
+a Fase 3 entrega "busca web, Spotify, Home Assistant".
+
+**O que mudou:** `gateway/tools/spotify.py` controla playback pela Web API do
+Spotify. É a **primeira ferramenta executada no gateway** — as quatro de agenda
+([D18](#d18--ferramentas-do-dispositivo-o-llm-pede-o-pi-executa-e-o-resultado-é-a-resposta))
+são declaradas lá e executadas no dispositivo.
+
+**Por quê a assimetria:** aqui há segredo. O `client_secret` e o refresh token
+ficam no servidor e não descem pelo fio. O dispositivo só ouve *"Tocando
+Construção, de Chico Buarque."* — que é, aliás, a mesma regra do
+[D7](#d7--pela-rede-sobe-só-texto-o-áudio-nasce-no-dispositivo) vista do outro
+lado: pela rede desce texto, não credencial.
+
+**Home Assistant fica de fora da Fase 3.** Uma lâmpada Elgin, hoje controlada
+pela Alexa, é todo o parque instalado. Não paga o Tailscale, a instância do HA e
+a Fase 5 que o plano exige para chegar nele. Se a casa crescer, volta.
+
+**Degradação é comportamento, não detalhe.** Sem credenciais no `.env` **ou** sem
+o refresh token em disco, as ferramentas de música **não são declaradas** ao
+modelo. Isso decorre direto do [D19](#d19--o-llama-318b-nao-faz-as-duas-coisas):
+um modelo pequeno que vê uma ferramenta indisponível tenta usar mesmo assim.
+Verificado com o Spotify desligado:
+
+```
+voce> toca chico buarque
+marcos> Nao sei tocar Chico Buarque.
+        Posso ajudar com timers, alarmes ou listar/agendar coisas?
+```
+
+Nenhuma chamada inventada, e o `/health` responde `"spotify": "off"`.
+
+**Detalhes que a documentação atual obrigou a mudar** — o plano avisava na seção
+14 que houve remoção de endpoints em fev/2026, então tudo foi conferido contra a
+referência viva em vez de escrito de memória:
+
+- Os endpoints de player (`/me/player/play`, `/pause`, `/next`, `/previous`,
+  `/devices`, `/currently-playing`) continuam de pé e **não** estão depreciados.
+- O `limit` do `/search` hoje é **0–10**. Era 50.
+- O `redirect_uri` precisa ser `127.0.0.1`; o Spotify recusa `localhost` desde
+  2025. Um `localhost` no dashboard é meia hora de erro `INVALID_CLIENT`.
+
+**Quatro modos de falha tratados, porque são os que acontecem:**
+
+- **403** — todo controle de playback exige Premium. A API não diz "compre
+  Premium", diz 403. Vira *"o controle de música precisa de Spotify Premium"*.
+- **404 / nenhum aparelho** — mandar tocar com o Spotify fechado em todo lugar
+  não faz nada. O cliente lê `/me/player/devices` antes, prefere o que está
+  ativo, e se não houver nenhum diz *"abra o Spotify em algum aparelho
+  primeiro"*.
+- **204 sem corpo** — "nada tocando" responde 204, e `r.json()` num corpo vazio
+  derruba cliente ingênuo.
+- **Refresh token rotacionado** — o Spotify às vezes devolve um token novo na
+  renovação. Ignorar isso mata a conexão semanas depois, longe da causa.
+
+**Uma escolha de segurança que parece detalhe:** o despacho nome → método é um
+dicionário explícito, não `getattr(client, nome)`. Com `getattr`, um nome
+inventado pelo modelo viraria chamada de método arbitrário do cliente. Há teste
+para isso.
+
+**Escopos pedidos:** só `user-read-playback-state` e
+`user-modify-playback-state`. Sem playlists, biblioteca, e-mail ou histórico.
+
+**Não verificado ponta a ponta:** não há conta do Spotify aqui. Os vinte testes
+rodam contra um `httpx.MockTransport`, o que cobre a lógica — token que vence,
+403, 204, escolha de aparelho — e **não** cobre o formato real das respostas nem
+o fluxo de consentimento no navegador. A primeira execução com conta de verdade
+ainda pode revelar diferença de campo, e deve ser tratada como estreia.

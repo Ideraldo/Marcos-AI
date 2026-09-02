@@ -22,6 +22,15 @@ class GatewayConfig:
     # ajustavel: o valor certo depende de onde o modelo esta rodando.
     llm_timeout: float = float(os.getenv("LLM_TIMEOUT", "120"))
     llm_api_key: str | None = os.getenv("LLM_API_KEY")
+    # Spotify: segredos moram aqui e nunca descem para o dispositivo (plano,
+    # secao 3). Sem eles, as ferramentas de musica simplesmente nao existem --
+    # o modelo nao ve o que nao pode usar.
+    spotify_client_id: str | None = os.getenv("SPOTIFY_CLIENT_ID")
+    spotify_client_secret: str | None = os.getenv("SPOTIFY_CLIENT_SECRET")
+    # 127.0.0.1 e nao localhost: o Spotify recusa `localhost` desde 2025.
+    spotify_redirect_uri: str = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
+    spotify_token_path: str = os.getenv("SPOTIFY_TOKEN_PATH", "gateway/data/spotify_token.json")
+    spotify_market: str = os.getenv("SPOTIFY_MARKET", "BR")
     stt_api_key: str | None = os.getenv("STT_API_KEY")
     tts_api_key: str | None = os.getenv("TTS_API_KEY")
 

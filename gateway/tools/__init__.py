@@ -1,5 +1,37 @@
-"""Ferramentas que o LLM pode chamar (plano, seção 3)."""
+"""Ferramentas que o LLM pode chamar (plano, seção 3).
+
+Dois grupos, e a diferença entre eles é onde a execução acontece:
+
+- **`device_tools`** — timer, alarme, agenda. O gateway declara e transporta; a
+  execução é do dispositivo, sempre (plano, seção 5, regra 3). É o que faz o
+  despertador não depender do servidor.
+- **`spotify`** — o gateway executa, porque aqui há segredo, e segredo não desce
+  pelo fio.
+
+O que os dois têm em comum: o resultado já vem redigido para ser falado, e vai
+ao ar sem uma segunda rodada de LLM. Ver D18 -- o modelo reescrevendo isso perde
+item e custa segundos.
+"""
 
 from gateway.tools.device_tools import DEVICE_TOOLS, TERMINAL_TOOLS, TOOL_TO_INTENT
+from gateway.tools.spotify import (
+    SPOTIFY_TOOLS,
+    SpotifyClient,
+    SpotifyError,
+    executar_spotify,
+)
 
-__all__ = ["DEVICE_TOOLS", "TERMINAL_TOOLS", "TOOL_TO_INTENT"]
+#: Toda ferramenta do Spotify também é terminal: a frase que o cliente devolve
+#: ("Tocando Construcao, de Chico Buarque.") é a resposta.
+SPOTIFY_TOOL_NAMES = frozenset(t.name for t in SPOTIFY_TOOLS)
+
+__all__ = [
+    "DEVICE_TOOLS",
+    "TERMINAL_TOOLS",
+    "TOOL_TO_INTENT",
+    "SPOTIFY_TOOLS",
+    "SPOTIFY_TOOL_NAMES",
+    "SpotifyClient",
+    "SpotifyError",
+    "executar_spotify",
+]

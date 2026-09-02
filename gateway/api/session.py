@@ -30,7 +30,13 @@ from common.serialization import decode, encode
 from gateway.conversation.history import Conversation
 from gateway.llm.base import LLMProvider
 from gateway.timing import Turn
-from gateway.tools import DEVICE_TOOLS, TERMINAL_TOOLS
+from gateway.tools import (
+    DEVICE_TOOLS,
+    SPOTIFY_TOOL_NAMES,
+    SPOTIFY_TOOLS,
+    TERMINAL_TOOLS,
+    executar_spotify,
+)
 
 log = logging.getLogger("marcos.session")
 
@@ -55,11 +61,17 @@ class Session:
         websocket: WebSocket,
         llm: LLMProvider,
         expected_token: str,
+        spotify: object | None = None,
     ) -> None:
         self._ws = websocket
         self._llm = llm
         self._expected_token = expected_token
         self._conversation = Conversation()
+        # Sem Spotify configurado, as ferramentas de música não são declaradas.
+        # O modelo não vê o que não pode usar -- e um modelo pequeno que vê uma
+        # ferramenta indisponível tenta usar mesmo assim (D19).
+        self._spotify = spotify
+        self._tools = DEVICE_TOOLS + (SPOTIFY_TOOLS if spotify is not None else [])
 
     async def run(self) -> None:
         await self._ws.accept()
@@ -174,7 +186,7 @@ class Session:
             chamada: tuple[str, dict] | None = None
 
             async for delta in self._llm.respond(
-                self._conversation.prompt(), tools=DEVICE_TOOLS
+                self._conversation.prompt(), tools=self._tools
             ):
                 if delta.tool_name:
                     # A execução é sempre do dispositivo (plano, seção 5, regra 3).
@@ -204,10 +216,14 @@ class Session:
                 )
                 break
 
-            resultado = await self._run_device_tool(nome, args)
+            if nome in SPOTIFY_TOOL_NAMES:
+                # A única família que o gateway executa: o segredo mora aqui.
+                resultado = await executar_spotify(self._spotify, nome, args)
+            else:
+                resultado = await self._run_device_tool(nome, args)
             turn.mark(f"ferramenta:{nome}")
 
-            if nome in TERMINAL_TOOLS:
+            if nome in TERMINAL_TOOLS or nome in SPOTIFY_TOOL_NAMES:
                 # O dispositivo já devolveu a frase pronta. Ela vai como está: o
                 # modelo reescrevendo isso perde item da lista, e a rodada extra
                 # custa segundos num turno que já é o mais lento que existe.

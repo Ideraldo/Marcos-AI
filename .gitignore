@@ -20,3 +20,6 @@ lab/finetune/out/
 lab/finetune/arquivo/**/*.onnx
 lab/finetune/arquivo/**/*.onnx.json
 device/data/
+
+# credenciais do gateway: refresh token do Spotify
+gateway/data/

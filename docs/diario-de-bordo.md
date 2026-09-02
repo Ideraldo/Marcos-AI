@@ -1505,6 +1505,94 @@ um .env que eu tinha esquecido que existia.*
 
 ---
 
+## Dia 6 (final) — Spotify, e a primeira ferramenta que não é do dispositivo
+
+Segundo item da minha ordem. E o primeiro que inverte a lógica das ferramentas:
+timer e alarme são declarados no gateway e executados no Pi; o Spotify é
+executado no gateway mesmo. A razão é uma só — **aqui tem segredo**, e segredo
+não desce pelo fio. O dispositivo só ouve *"Tocando Construção, de Chico
+Buarque."* ([D21](decisions.md)).
+
+### Conferir antes de escrever
+
+O plano tinha um aviso na seção 14 que eu tinha esquecido: *"endpoints do Spotify
+alterados — houve remoção em fev/2026"*. Então em vez de escrever de memória, fui
+na referência viva. Bem que eu fui:
+
+- Os endpoints de player continuam de pé, nenhum depreciado.
+- O `limit` do `/search` hoje é **0 a 10**. Era 50. Eu teria escrito 20 sem
+  pensar duas vezes.
+- O `redirect_uri` tem que ser `127.0.0.1`, não `localhost` — o Spotify recusa
+  desde 2025. Isso sozinho vale meia hora de `INVALID_CLIENT` para quem não sabe.
+
+### Os quatro erros que eu sei que vão acontecer
+
+Cliente de API não quebra no caminho feliz. Quebra nestes, e todos viraram teste:
+
+**403.** Todo controle de playback exige Premium, e a API não diz "compre
+Premium" — diz 403. Vira *"o controle de música precisa de Spotify Premium"*.
+
+**Nenhum aparelho aberto.** Mandar tocar com o Spotify fechado em todo lugar não
+faz nada e devolve 404. É o caso mais comum da vida real, não o mais raro. O
+cliente lê a lista de aparelhos antes, prefere o que está ativo, e se não houver
+nenhum diz *"abra o Spotify em algum aparelho primeiro"*.
+
+**204 sem corpo.** "Nada tocando" responde 204, e `r.json()` num corpo vazio
+derruba cliente ingênuo.
+
+**Refresh token rotacionado.** O Spotify às vezes devolve um token novo na
+renovação. Ignorar isso não quebra hoje — quebra em três semanas, longe da causa,
+e aí ninguém liga uma coisa na outra.
+
+### Uma linha que eu quase escrevi errada
+
+O despacho de nome de ferramenta para método começou como
+`getattr(client, nome)`. É a coisa óbvia, e é uma porta: o nome vem do **modelo**,
+e o modelo inventa nomes. `getattr` com nome inventado é chamada de método
+arbitrário do cliente. Virou dicionário explícito, com teste conferindo que
+`_access_token` e `_save_refresh` não estão entre os valores.
+
+Não é paranoia teórica. No mesmo dia eu tinha medido o llama3.1 inventando uma
+ferramenta `pesquisar` que não existe.
+
+### A parte que eu gostei
+
+Sem credenciais no `.env`, as ferramentas de música **não são declaradas** ao
+modelo. Isso vem direto do D19: modelo pequeno que vê ferramenta indisponível
+tenta usar mesmo assim. Com o Spotify desligado:
+
+```
+voce> poe um timer de 10 minutos
+marcos> Timer de 10 minutos.        [nivel 0, local]
+
+voce> toca chico buarque
+marcos> Nao sei tocar Chico Buarque.
+        Posso ajudar com timers, alarmes ou listar/agendar coisas?
+
+voce> qual a capital da australia
+marcos> A capital da Australia e Canberra.
+```
+
+Ele diz que não sabe, oferece o que sabe, e não inventa chamada nenhuma. É o
+comportamento certo para um aparelho que vai ganhar capacidades aos poucos.
+
+### O que eu não posso afirmar
+
+**Não existe conta do Spotify aqui.** Os vinte testes rodam contra um
+`MockTransport` — HTTP falso. Isso cobre a lógica que eu escrevi (token que
+vence, 403, 204, escolha de aparelho) e não cobre duas coisas que só a realidade
+tem: o formato exato das respostas e o fluxo de consentimento no navegador.
+
+É a mesma situação do Docker no Dia 5, e vou tratar igual: está escrito com
+cuidado, está marcado como não verificado, e a primeira execução com conta de
+verdade é estreia, não confirmação.
+
+*Lição para o vídeo: o plano tinha um bilhete de dois anos atrás dizendo "confira
+a API antes". Conferi, e três detalhes tinham mudado. O plano velho que avisa
+sobre si mesmo vale mais que o plano novo que finge estar certo.*
+
+---
+
 ## Onde estamos agora
 
 **O Marcos me ouve, pensa, responde com a minha voz — e agora também resolve
@@ -1536,7 +1624,9 @@ Fechado até aqui:
 | Binários | fora do git (D12) | 32 GB, e o `.onnx` é a minha voz |
 | Imagem do gateway | só `requirements-gateway.txt` (D15) | sem STT, sobrou fastapi + httpx |
 | Nível 0 | regex + SQLite no dispositivo (D17) | o despertador não pode depender do Wi-Fi |
-| Ferramentas | declaradas no gateway, executadas no Pi (D18) | a execução é sempre local |
+| Ferramentas | agenda: declarada no gateway, executada no Pi (D18) | a execução é sempre local |
+| Spotify | declarado **e** executado no gateway (D21) | é onde mora o segredo |
+| Home Assistant | fora de escopo (D21) | uma lâmpada não paga Tailscale + Fase 5 |
 | Resultado de ferramenta | vai ao ar sem 2ª rodada de LLM (D18) | o modelo perdia item ao resumir |
 | Boot | sobe sem o gateway (D17) | senão o critério da Fase 2 é impossível |
 
@@ -1573,8 +1663,17 @@ O que sobra em aberto é **fundamentação**: o 8B alucina de vez em quando — 
 que Dom Casmurro é do Mario Quintana, uma vez em seis. É o argumento a favor da
 busca web.
 
-Ordem escolhida para o resto da Fase 3: **Spotify**, depois **busca web**.
-Home Assistant fica fora: uma lâmpada Elgin não paga o Tailscale e a Fase 5.
+**Spotify escrito, não verificado.** Seis ferramentas de música, executadas no
+gateway porque é lá que mora o segredo (D21). Sem credenciais no `.env` elas
+nem são declaradas ao modelo, e o aparelho responde que não sabe tocar em vez de
+inventar chamada. Os vinte testes rodam contra HTTP falso: **não há conta do
+Spotify aqui**, então o formato real das respostas e o consentimento no
+navegador continuam sem prova.
+
+Falta você criar o app no dashboard e rodar `python -m gateway.tools.spotify_auth`.
+
+Depois: **busca web**, que virou mais urgente do que era quando a ordem foi
+escolhida — é a resposta à alucinação do D20.
 
 Marco seguinte, planejado: **modo tradutor portátil.** Falar português e o
 aparelho falar inglês ou chinês, e o contrário. Duas das três peças já existem —
@@ -1590,6 +1689,8 @@ Em aberto:
 
 - **Se o container sobe** — só se descobre na VPS (D15, D16). Se aparecer
   qualquer máquina com Docker antes disso, rodar o build ali se paga.
+- **Se o Spotify funciona de verdade** — falta conta e o consentimento no
+  navegador (D21). O código está escrito e testado contra HTTP falso.
 - **Se tudo isso cabe na Pi** — nada foi medido lá ainda, nem o Whisper. O
   RTF do dispositivo já subiu de 0,43 para 0,6–0,9 só saindo da bancada para o
   código real. É a maior incerteza do projeto hoje.

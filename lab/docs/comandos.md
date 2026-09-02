@@ -33,6 +33,7 @@ Set-Alias py .\.venv\Scripts\python.exe
 | Gravar mais e continuar sem recomeçar | `py -m lab.finetune.prepare --from-run X` |
 | Rodar o assistente | `py -m uvicorn gateway.main:app` + `py -m device.main` |
 | Testar o nível 0 sem gateway | `py -m device.main --text` (sem subir o gateway) |
+| Autorizar o Spotify (uma vez) | `py -m gateway.tools.spotify_auth` |
 
 ---
 
@@ -380,6 +381,9 @@ Variáveis relevantes em `.env`:
 | `STT_MODEL` / `STT_COMPUTE_TYPE` / `STT_MODEL_DIR` | qual Whisper o dispositivo carrega |
 | `VAD_SILENCE_MS` / `VAD_AGGRESSIVENESS` | quanto silêncio encerra a fala |
 | `SCHEDULES_DB` | onde timers e alarmes ficam entre um boot e outro |
+| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | sem elas, as ferramentas de musica nao existem (D21) |
+| `SPOTIFY_REDIRECT_URI` | tem que bater com o dashboard; `127.0.0.1`, nunca `localhost` |
+| `SPOTIFY_TOKEN_PATH` / `SPOTIFY_MARKET` | onde o refresh token fica, e o pais da busca |
 
 > **Não rode o Ollama enquanto o fine-tune treina.** Os dois disputam a mesma
 > placa e o treino morre com `CUDA out of memory` — aconteceu. `ollama stop

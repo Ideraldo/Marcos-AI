@@ -185,8 +185,39 @@ returned its draft as content, and on a voice assistant that means the device
 Still open: grounding. An 8B hallucinates -- it once attributed Dom Casmurro to
 the wrong author. That is what web search is for, and it is next.
 
-Next in this phase: Spotify, then web search. Home Assistant is out of scope --
-one smart bulb does not justify Tailscale and phase 5.
+**Spotify: written, not verified.** Six music tools, and the first ones the
+gateway executes itself rather than forwarding -- the client secret and refresh
+token live on the server and never travel the wire (D21). Setup is one-time:
+
+```powershell
+# 1. https://developer.spotify.com/dashboard -> Create app
+#    Redirect URI must be exactly http://127.0.0.1:8888/callback
+#    (Spotify rejects "localhost"; 127.0.0.1 only)
+# 2. Put the client id and secret in .env
+# 3. Authorise once; the refresh token lands in gateway/data/ (gitignored)
+.\.venv\Scripts\python.exe -m gateway.tools.spotify_auth
+```
+
+Playback control needs **Spotify Premium** -- the API answers 403 without it,
+and the client turns that into a spoken sentence rather than a traceback.
+
+With no credentials configured the music tools are **not declared to the model
+at all**, and `/health` reports `"spotify": "off"`. That follows from D19: a
+small model that sees an unavailable tool tries to use it anyway. What it does
+instead is admit it cannot:
+
+```
+voce> toca chico buarque
+marcos> Nao sei tocar Chico Buarque.
+        Posso ajudar com timers, alarmes ou listar/agendar coisas?
+```
+
+The 20 tests run against a mocked HTTP transport. There is no Spotify account on
+this machine, so the real response shapes and the browser consent flow are still
+unproven -- treat the first real run as a first run.
+
+Home Assistant is out of scope -- one smart bulb does not justify Tailscale and
+phase 5.
 
 ```powershell
 ollama pull qwen3:8b     # once; the .env points at it
@@ -220,8 +251,8 @@ in `docs/voz-e-locutor.md`:
 **Phase 1's container is written but never executed** (D15), and its first real
 run will be on the VPS (D16). Nothing else waits on it.
 
-**Spotify, then web search** -- the rest of phase 3. Web search matters more
-than it looks: it is the answer to an 8B model that hallucinates (D20).
+**Web search** -- the last piece of phase 3, and the one that matters most: it
+is the answer to an 8B model that hallucinates (D20).
 
 **Then: portable translator mode.** Speak Portuguese, have the device speak
 English or Chinese, and the reverse. Two of the three pieces already exist --

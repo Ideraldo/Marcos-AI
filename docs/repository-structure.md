@@ -96,8 +96,11 @@ gateway/
   api/             WebSocket + autenticação por token
   llm/             base.py (Protocol ProvedorLLM) + implementações
   tts/             base.py (Protocol) + cache de frases fixas
-  tools/           device_tools.py: o LLM pede, o Pi executa (D18).
-                   spotify e web_search entram aqui
+  tools/           device_tools.py: o LLM pede, o Pi executa (D18)
+                   spotify.py: o gateway executa, porque aqui ha segredo (D21)
+                   spotify_auth.py: consentimento, roda uma vez
+                   web_search entra aqui
+  data/            refresh token do Spotify -- fora do git
   conversation/    histórico e montagem de contexto
   config.py        segredos e parâmetros — nunca saem do servidor
   main.py          entrypoint (uvicorn)
