@@ -1917,8 +1917,54 @@ Em aberto:
 - Se o gateway deve re-transcrever com um modelo maior — a pergunta de D1 que
   D13 deixou sem caminho, porque o áudio não sobe mais
 
-Ainda não começou: embeddings no roteador, volume, ferramentas do gateway, modo
-tradutor, rosto, wake word, VPS, hardware.
+Ainda não começou: embeddings no roteador, volume, modo tradutor, rosto, wake
+word, VPS, hardware.
+
+---
+
+## O que espera hardware
+
+Lista única do que está **escrito e não verificado**, ou pendente, por falta de
+máquina. Existe para não virar arqueologia: cada item diz o que fazer, onde, e
+qual decisão explica o porquê.
+
+### Quando a Raspberry Pi chegar (Fase 6)
+
+- [ ] **Medir o STT na Pi.** É a maior incerteza do projeto. O RTF já subiu de
+      0,43 (bancada) para 0,6–0,9 (dispositivo) só saindo do laboratório; na Pi
+      decide entre `small` e `base` ([D9](decisions.md), [D13](decisions.md)).
+- [ ] **Instalar o raspotify** e dar o nome à Pi:
+      ```bash
+      curl -sL https://dtcooper.github.io/raspotify/install.sh | sh
+      sudo nano /etc/raspotify/conf     # LIBRESPOT_NAME="Marcos"
+      sudo systemctl restart raspotify
+      ```
+      `LIBRESPOT_NAME` tem que ser **a mesma string** do `SPOTIFY_DEVICE` no
+      `.env` do gateway — é o único fio ligando os dois ([D23](decisions.md)).
+      Exige Premium (tem) e não roda em ARMv6.
+- [ ] **Ducking.** O `librespot` e o Piper disputam a placa de som: falar por
+      cima da música exige abaixar a música. É o mesmo problema do barge-in da
+      Fase 7, e sai mais barato resolver junto ([D23](decisions.md)).
+- [ ] **Volume** como intenção de nível 0. Depende do mixer do sistema, que é
+      código por plataforma ([D17](decisions.md)).
+- [ ] Áudio, botão GPIO, display e o rosto — a Fase 6 do plano.
+
+### Quando houver qualquer máquina com Docker
+
+- [ ] **Rodar `docker compose up` uma vez.** O `Dockerfile`, o
+      `docker-compose.yml` e o `.dockerignore` **nunca foram executados**: aqui
+      não há Docker nem WSL2, e a virtualização fica desligada na BIOS por causa
+      do Vanguard ([D15](decisions.md), [D16](decisions.md)). O primeiro `up`
+      está marcado para acontecer na VPS, no dia do deploy — que é o pior dia
+      para descobrir um erro de YAML. Qualquer notebook ou runner serve para
+      antecipar isso.
+
+### Quando houver log de uso real
+
+- [ ] **Embeddings no roteador.** As 5–10 frases de exemplo por intenção não
+      devem ser inventadas: o log de nível 2 já grava as frases que sobem para o
+      LLM, e em algumas semanas ele diz quais paráfrases existem nesta casa
+      ([D17](decisions.md)).
 
 ---
 ## Como continuar preenchendo

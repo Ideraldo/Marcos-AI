@@ -295,4 +295,8 @@ local LLM on day 1.
 on a PC. Nothing has run on a Pi yet -- not even Whisper -- and moving from the
 bench to real device code already pushed RTF from 0.43 to 0.6-0.9.
 
+**Waiting on hardware** -- measuring STT on the Pi, raspotify, ducking, and the
+one `docker compose up` that has never run -- is collected in a single checklist
+at the end of `docs/diario-de-bordo.md`, so none of it has to be rediscovered.
+
 The reasoning behind all of it is in `docs/diario-de-bordo.md`.
