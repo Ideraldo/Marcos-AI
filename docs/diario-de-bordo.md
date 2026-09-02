@@ -1807,125 +1807,6 @@ do barge-in da Fase 7, e sai mais barato resolver os dois de uma vez.
 
 ---
 
-## Onde estamos agora
-
-**O Marcos me ouve, pensa, responde com a minha voz — e agora também resolve
-sozinho o que não precisa de ninguém.** Timer, alarme e hora funcionam com o
-gateway desligado e com a internet fora.
-
-**O Marcos me ouve, pensa e responde com a minha voz — sem eu digitar nada.** O
-microfone captura, o VAD corta, o faster-whisper transcreve no próprio
-dispositivo, o gateway consulta o LLM e devolve a resposta frase por frase, e o
-Piper sintetiza. Pela rede sobe e desce só texto. E se o fio cair no meio, o
-aparelho volta sozinho.
-
-A voz oficial é a **época 996** do fine-tune v2, com 30,9 min de áudio e learning
-rate 1e-4. Medida com síntese determinística: holdout 23,8% contra 14,6% da base.
-
-Fechado até aqui:
-
-| | Escolha | Por quê |
-|---|---|---|
-| Nome | Marcos (D8) | o repositório já se chamava assim |
-| Arquitetura | Dois processos, WebSocket | migrar = trocar URL |
-| Rede | só texto, nos dois sentidos (D7, D13) | alguns KB por interação, e fala offline |
-| LLM | qwen3:8b via Ollama, sem raciocínio (D11, D20) | o llama3.1 não tem ferramentas e conhecimento juntos |
-| STT | faster-whisper no dispositivo, tamanho a decidir na Pi (D9, D13) | nível 0 offline não existe sem isso |
-| TTS | Piper, voz própria treinada (D4) | RTF 0,05, offline, timbre próprio |
-| Locutor | ECAPA-TDNN | cadastro, não treino |
-| Queda de rede | reconexão com espera crescente (D14) | ficar mudo é o pior modo de falha |
-| VPS | adiada (D10) | nada do que falta depende dela |
-| Binários | fora do git (D12) | 32 GB, e o `.onnx` é a minha voz |
-| Imagem do gateway | só `requirements-gateway.txt` (D15) | sem STT, sobrou fastapi + httpx |
-| Nível 0 | regex + SQLite no dispositivo (D17) | o despertador não pode depender do Wi-Fi |
-| Ferramentas | agenda: declarada no gateway, executada no Pi (D18) | a execução é sempre local |
-| Spotify | declarado **e** executado no gateway (D21) | é onde mora o segredo |
-| Onde a música toca | `SPOTIFY_DEVICE`, padrão a própria Pi (D23) | ser a caixa de som, não o controle remoto |
-| Histórico | guarda `tool_call` + resultado (D22) | sem isso o modelo para de chamar ferramenta |
-| Home Assistant | fora de escopo (D21) | uma lâmpada não paga Tailscale + Fase 5 |
-| Resultado de ferramenta | vai ao ar sem 2ª rodada de LLM (D18) | o modelo perdia item ao resumir |
-| Boot | sobe sem o gateway (D17) | senão o critério da Fase 2 é impossível |
-
-**Fase 0 cumprida por inteiro, e além.** O critério era o loop em dois processos;
-temos LLM real, voz própria e o STT fora do stub.
-
-**Fase 1 escrita, verificação adiada para a VPS (D16).** Token e latência
-simulada funcionam. O container foi corrigido (D15) — imagem enxuta,
-`.dockerignore`, Ollama alcançável de dentro, usuário não-root — mas
-`docker compose up` **nunca rodou e não vai rodar aqui**: a virtualização fica
-desligada na BIOS por causa do Valorant, e sem ela não há WSL2 nem Docker
-Desktop. Na VPS é Linux, e o problema não existe.
-
-**Fase 2 entregue no essencial.** Timer, alarme, hora, listar e cancelar rodam
-no dispositivo, sem rede e sem LLM, e o aparelho liga com o gateway desligado. O
-critério de aceite — "timer funciona com o gateway desligado" — foi verificado
-rodando, não só em teste.
-
-Falta da Fase 2, e é escopo consciente (D17): a similaridade por **embeddings**,
-que espera o log real de nível 2 dizer quais paráfrases as pessoas usam; e o
-**volume**, que depende do mixer do sistema operacional.
-
-**Fase 3 começada.** As ferramentas que voltam para o dispositivo — timer,
-alarme, listar, cancelar — funcionam ponta a ponta: o LLM entende a paráfrase que
-o regex não pega, e quem grava e dispara continua sendo o Pi (D18).
-
-**E o critério de aceite passou a ser cumprido trocando o modelo.** Com
-ferramentas declaradas o llama3.1:8b parava de responder conhecimento geral (0 de
-7). O **qwen3:8b com o raciocínio desligado** acerta 5/5 nas ferramentas e 6/7 no
-conhecimento, com mediana de 2,8 s (D19, D20). O qwen3:4b foi descartado por
-vazar o rascunho do raciocínio como fala.
-
-O que sobra em aberto é **fundamentação**: o 8B alucina de vez em quando — disse
-que Dom Casmurro é do Mario Quintana, uma vez em seis. É o argumento a favor da
-busca web.
-
-**Spotify funcionando com conta real.** Seis ferramentas de música, executadas
-no gateway porque é lá que mora o segredo (D21). Tocar, pular, pausar e "que
-música é essa" verificados contra a API, com `is_playing` conferido a cada passo.
-Sem credenciais no `.env` as ferramentas nem são declaradas, e o aparelho
-responde que não sabe tocar em vez de inventar chamada.
-
-A estreia com conta real achou três defeitos que o HTTP falso não pegaria: o 403
-que significa duas coisas, a fila de uma música só, e — o pior — o modelo dizendo
-ter pausado sem pausar (D22).
-
-**Busca na internet funcionando**, com DuckDuckGo sem chave e o Brave como troca
-de uma variável (D24). É a resposta à alucinação do D20, e as perguntas que o
-modelo recusava agora vêm respondidas e fundamentadas. Custa caro: 7 a 12 s por
-turno com busca, contra ~2 s sem. É o preço de fundamentar.
-
-**A Fase 3 está entregue**, menos o Home Assistant, que ficou fora de escopo.
-
-Marco seguinte, planejado: **modo tradutor portátil.** Falar português e o
-aparelho falar inglês ou chinês, e o contrário. Duas das três peças já existem —
-o Whisper é multilíngue, o Piper tem voz por idioma. Falta a tradução no meio, e
-o candidato é **opus-mt em CTranslate2**, que é o runtime que o `faster_whisper`
-já usa. O NLLB-200 600M fica registrado como teto de comparação e
-**não-candidato no dispositivo** — autorregressivo demais para quatro núcleos
-ARM, o mesmo motivo que derrubou o LLM local no dia 1. Primeiro passo: um
-experimento em `lab/` medindo opus-mt pt↔en sobre as gravações reais. Detalhes e
-números estimados no [Dia 5](#dia-5--o-microfone-entrou-no-fio-e-o-fio-aprendeu-a-cair).
-
-Em aberto:
-
-- **Se o container sobe** — só se descobre na VPS (D15, D16). Se aparecer
-  qualquer máquina com Docker antes disso, rodar o build ali se paga.
-- **Se tudo isso cabe na Pi** — nada foi medido lá ainda, nem o Whisper. O
-  RTF do dispositivo já subiu de 0,43 para 0,6–0,9 só saindo da bancada para o
-  código real. É a maior incerteza do projeto hoje.
-- Qual tamanho de STT cabe na Pi, quando houver Pi para medir (D9)
-- Backup privado do dataset, que hoje existe só num disco
-- **Se um 8B basta para busca fundamentada** — para ferramentas e conversa curta
-  já se sabe que basta (D20); ele alucina, e a busca web é o teste real disso
-- Se um bloco 4 de gravações vale a pena (o `prepare --from-run` já deixa barato)
-- Se o gateway deve re-transcrever com um modelo maior — a pergunta de D1 que
-  D13 deixou sem caminho, porque o áudio não sobe mais
-
-Ainda não começou: embeddings no roteador, volume, modo tradutor, rosto, wake
-word, VPS, hardware.
-
----
-
 ## Dia 7 (continuação) — A busca, e o modelo parando de inventar
 
 A última peça da Fase 3, e a que eu mais queria: desde que o modelo disse que
@@ -1981,6 +1862,177 @@ uma resposta que soa quebrada.
 *Lição para o vídeo: seis dias com um bug que não tinha como aparecer, porque o
 assistente nunca tinha falado um número grande. Cada ferramenta nova não traz só
 uma função — traz um formato de texto que o resto do sistema nunca tinha visto.*
+
+### "Não seria melhor usar um harness lá?"
+
+No meio disso eu perguntei uma coisa que vinha me incomodando: já que a busca só
+roda no gateway, na VPS, não valeria usar um framework de agente lá — ou um
+modelo especializado em ferramentas, tipo o Hermes?
+
+A resposta me convenceu, e virou [D25](decisions.md).
+
+**O laço de ferramentas que eu já tenho tem 40 linhas.** Pede ao modelo, executa,
+grava no histórico, repete até três rodadas. É o que um harness faz. Trocar 40
+linhas por dezenas de pacotes transitivos, numa imagem que a D15 deixou com cinco
+dependências de propósito para caber numa VPS pequena, é caro pelo que entrega.
+
+Mas o argumento que pesou foi outro, e é sobre este dia especificamente: **as três
+correções mais importantes de hoje dependeram de o mecanismo estar à vista.** A
+D18 (o resultado é a resposta), a D22 (o histórico precisa guardar a chamada) e o
+bug do "384.400" são todas decisões sobre o que entra no prompt e o que sai como
+fala. Um framework abstrai exatamente essa camada. A D22 eu só achei porque o
+histórico é um `list[Message]` que dá para imprimir na tela.
+
+Sobre o Hermes: faria sentido se o gargalo fosse escolher ferramenta. Não é — o
+qwen3:8b mediu 5/5 nisso na bancada do D19. O que faltava era fundamentar, e quem
+resolveu foi a busca. E tem o detalhe do hardware: a 2060 tem 6 GB, o qwen3:8b já
+ocupa 5,2, então um Hermes 8B empata e qualquer coisa maior não cabe.
+
+**Onde um harness ganharia de verdade:** busca de múltiplos passos — abrir as
+páginas, ler, refinar a consulta. A qualidade melhoraria. Mas custa 20 a 40
+segundos, e o turno com busca já está em 7 a 12 contra o orçamento de 1,5 do
+plano. Ninguém espera meio minuto falando com um aparelho no quarto.
+
+Ficou anotado o gatilho para reabrir: se aparecerem perguntas em que o trecho do
+buscador não basta, o próximo passo são ~30 linhas lendo a primeira página — não
+um framework. Se **depois disso** ainda faltar, a conversa volta com número.
+
+*Lição para o vídeo: a melhor resposta para "não seria melhor usar a ferramenta
+X?" quase nunca é sim ou não. É "o que exatamente ela faria que meu código já não
+faz, e o que eu deixo de enxergar em troca".*
+
+---
+
+## Onde estamos agora
+
+**O Marcos me ouve, pensa, responde com a minha voz — e agora também resolve
+sozinho o que não precisa de ninguém.** Timer, alarme e hora funcionam com o
+gateway desligado e com a internet fora.
+
+**O Marcos me ouve, pensa e responde com a minha voz — sem eu digitar nada.** O
+microfone captura, o VAD corta, o faster-whisper transcreve no próprio
+dispositivo, o gateway consulta o LLM e devolve a resposta frase por frase, e o
+Piper sintetiza. Pela rede sobe e desce só texto. E se o fio cair no meio, o
+aparelho volta sozinho.
+
+A voz oficial é a **época 996** do fine-tune v2, com 30,9 min de áudio e learning
+rate 1e-4. Medida com síntese determinística: holdout 23,8% contra 14,6% da base.
+
+Fechado até aqui:
+
+| | Escolha | Por quê |
+|---|---|---|
+| Nome | Marcos (D8) | o repositório já se chamava assim |
+| Arquitetura | Dois processos, WebSocket | migrar = trocar URL |
+| Rede | só texto, nos dois sentidos (D7, D13) | alguns KB por interação, e fala offline |
+| LLM | qwen3:8b via Ollama, sem raciocínio (D11, D20) | o llama3.1 não tem ferramentas e conhecimento juntos |
+| STT | faster-whisper no dispositivo, tamanho a decidir na Pi (D9, D13) | nível 0 offline não existe sem isso |
+| TTS | Piper, voz própria treinada (D4) | RTF 0,05, offline, timbre próprio |
+| Locutor | ECAPA-TDNN | cadastro, não treino |
+| Queda de rede | reconexão com espera crescente (D14) | ficar mudo é o pior modo de falha |
+| VPS | adiada (D10) | nada do que falta depende dela |
+| Binários | fora do git (D12) | 32 GB, e o `.onnx` é a minha voz |
+| Imagem do gateway | só `requirements-gateway.txt` (D15) | sem STT, sobrou fastapi + httpx |
+| Nível 0 | regex + SQLite no dispositivo (D17) | o despertador não pode depender do Wi-Fi |
+| Ferramentas | agenda: declarada no gateway, executada no Pi (D18) | a execução é sempre local |
+| Spotify | declarado **e** executado no gateway (D21) | é onde mora o segredo |
+| Onde a música toca | `SPOTIFY_DEVICE`, padrão a própria Pi (D23) | ser a caixa de som, não o controle remoto |
+| Histórico | guarda `tool_call` + resultado (D22) | sem isso o modelo para de chamar ferramenta |
+| Busca | DuckDuckGo sem chave, Brave trocável (D24) | fundamentar não pode exigir cadastro |
+| Orquestração | as 40 linhas do `session.py` (D25) | framework esconderia a camada onde estavam os bugs |
+| Home Assistant | fora de escopo (D21) | uma lâmpada não paga Tailscale + Fase 5 |
+| Resultado de ferramenta | vai ao ar sem 2ª rodada de LLM (D18) | o modelo perdia item ao resumir |
+| Boot | sobe sem o gateway (D17) | senão o critério da Fase 2 é impossível |
+
+**Fase 0 cumprida por inteiro, e além.** O critério era o loop em dois processos;
+temos LLM real, voz própria e o STT fora do stub.
+
+**Fase 1 escrita, verificação adiada para a VPS (D16).** Token e latência
+simulada funcionam. O container foi corrigido (D15) — imagem enxuta,
+`.dockerignore`, Ollama alcançável de dentro, usuário não-root — mas
+`docker compose up` **nunca rodou e não vai rodar aqui**: a virtualização fica
+desligada na BIOS por causa do Valorant, e sem ela não há WSL2 nem Docker
+Desktop. Na VPS é Linux, e o problema não existe.
+
+**Fase 2 entregue no essencial.** Timer, alarme, hora, listar e cancelar rodam
+no dispositivo, sem rede e sem LLM, e o aparelho liga com o gateway desligado. O
+critério de aceite — "timer funciona com o gateway desligado" — foi verificado
+rodando, não só em teste.
+
+Falta da Fase 2, e é escopo consciente (D17): a similaridade por **embeddings**,
+que espera o log real de nível 2 dizer quais paráfrases as pessoas usam; e o
+**volume**, que depende do mixer do sistema operacional.
+
+**Fase 3 começada.** As ferramentas que voltam para o dispositivo — timer,
+alarme, listar, cancelar — funcionam ponta a ponta: o LLM entende a paráfrase que
+o regex não pega, e quem grava e dispara continua sendo o Pi (D18).
+
+**E o critério de aceite passou a ser cumprido trocando o modelo.** Com
+ferramentas declaradas o llama3.1:8b parava de responder conhecimento geral (0 de
+7). O **qwen3:8b com o raciocínio desligado** acerta 5/5 nas ferramentas e 6/7 no
+conhecimento, com mediana de 2,8 s (D19, D20). O qwen3:4b foi descartado por
+vazar o rascunho do raciocínio como fala.
+
+O que sobra em aberto é **fundamentação**: o 8B alucina de vez em quando — disse
+que Dom Casmurro é do Mario Quintana, uma vez em seis. É o argumento a favor da
+busca web.
+
+**Spotify funcionando com conta real.** Seis ferramentas de música, executadas
+no gateway porque é lá que mora o segredo (D21). Tocar, pular, pausar e "que
+música é essa" verificados contra a API, com `is_playing` conferido a cada passo.
+Sem credenciais no `.env` as ferramentas nem são declaradas, e o aparelho
+responde que não sabe tocar em vez de inventar chamada.
+
+A estreia com conta real achou três defeitos que o HTTP falso não pegaria: o 403
+que significa duas coisas, a fila de uma música só, e — o pior — o modelo dizendo
+ter pausado sem pausar (D22).
+
+**Busca na internet funcionando**, com DuckDuckGo sem chave e o Brave como troca
+de uma variável (D24). É a resposta à alucinação do D20, e as perguntas que o
+modelo recusava agora vêm respondidas e fundamentadas. Custa caro: 7 a 12 s por
+turno com busca, contra ~2 s sem. É o preço de fundamentar.
+
+**A Fase 3 está entregue**, menos o Home Assistant, que ficou fora de escopo.
+
+Sem framework de agente e sem trocar de modelo (D25): o laço de ferramentas tem
+40 linhas e faz o que um harness faria, e foi justamente por ele estar à vista
+que a D18, a D22 e o bug do "384.400" foram encontrados.
+
+Próximo marco: **Fase 4 — o rosto**, um app web local com os quatro estados
+animados. Ou o **modo tradutor**. Nenhum dos dois depende de hardware.
+
+Marco seguinte, planejado: **modo tradutor portátil.** Falar português e o
+aparelho falar inglês ou chinês, e o contrário. Duas das três peças já existem —
+o Whisper é multilíngue, o Piper tem voz por idioma. Falta a tradução no meio, e
+o candidato é **opus-mt em CTranslate2**, que é o runtime que o `faster_whisper`
+já usa. O NLLB-200 600M fica registrado como teto de comparação e
+**não-candidato no dispositivo** — autorregressivo demais para quatro núcleos
+ARM, o mesmo motivo que derrubou o LLM local no dia 1. Primeiro passo: um
+experimento em `lab/` medindo opus-mt pt↔en sobre as gravações reais. Detalhes e
+números estimados no [Dia 5](#dia-5--o-microfone-entrou-no-fio-e-o-fio-aprendeu-a-cair).
+
+Em aberto:
+
+- **Se o container sobe** — só se descobre na VPS (D15, D16). Se aparecer
+  qualquer máquina com Docker antes disso, rodar o build ali se paga.
+- **Se tudo isso cabe na Pi** — nada foi medido lá ainda, nem o Whisper. O
+  RTF do dispositivo já subiu de 0,43 para 0,6–0,9 só saindo da bancada para o
+  código real. É a maior incerteza do projeto hoje.
+- Qual tamanho de STT cabe na Pi, quando houver Pi para medir (D9)
+- Backup privado do dataset, que hoje existe só num disco
+- **Se o trecho do buscador basta** — a busca responde com o resumo que o
+  DuckDuckGo devolve, sem abrir as páginas (D24). Se aparecer pergunta em que
+  isso não chega, o próximo passo são ~30 linhas lendo a primeira página, e não
+  um framework (D25)
+- **Se o DuckDuckGo sem chave aguenta o uso diário** — é o primeiro a sofrer
+  quando o provedor aperta o cerco a automação; o Brave está pronto atrás da
+  mesma interface, e a troca é uma variável
+- Se um bloco 4 de gravações vale a pena (o `prepare --from-run` já deixa barato)
+- Se o gateway deve re-transcrever com um modelo maior — a pergunta de D1 que
+  D13 deixou sem caminho, porque o áudio não sobe mais
+
+Ainda não começou: embeddings no roteador, volume, modo tradutor, rosto, wake
+word, VPS, hardware.
 
 ---
 

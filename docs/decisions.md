@@ -1019,3 +1019,77 @@ quebrada.
 - O system prompt ganhou a única instrução específica de formato que existe:
   responder em uma ou duas frases a partir dos trechos, sem ler a lista nem o
   endereço do site. Sem ela o modelo lê a numeração em voz alta.
+
+---
+
+## D25 — Sem framework de agente no gateway, e por quê
+
+**Data:** 2026-09-01
+**O plano diz:** a seção 6 define a interface `LLMProvider` e a seção 3 põe as
+ferramentas no gateway. Não menciona framework de orquestração.
+
+**A pergunta que motivou isto:** já que a busca só roda no gateway, na VPS, não
+valeria usar um *harness* lá — LangChain, LlamaIndex, smolagents — ou um modelo
+especializado em ferramentas, tipo Hermes?
+
+**O que ficou decidido:** nada de framework, e o modelo continua o
+[qwen3:8b](#d20--o-modelo-passa-a-ser-o-qwen38b-com-o-raciocínio-desligado). As
+duas coisas por motivos diferentes.
+
+### O framework
+
+O laço de ferramentas que existe hoje tem cerca de **40 linhas** em
+`gateway/api/session.py`: pede ao modelo, executa, grava o par no histórico,
+repete até `MAX_TOOL_ROUNDS`. É o que um harness faz, e já está feito.
+
+O que ele custaria é mensurável. A [D15](#d15--a-imagem-do-gateway-não-instala-o-requirementstxt)
+deixou a imagem do gateway com cinco dependências — `fastapi`, `uvicorn`,
+`httpx`, `dotenv`, `ddgs` — porque ela roda numa VPS pequena. Um framework de
+agente traz dezenas de pacotes transitivos para substituir 40 linhas.
+
+E há um custo que não aparece em `requirements.txt`: **as três correções mais
+importantes de hoje dependeram de o mecanismo estar à vista.**
+
+- [D18](#d18--ferramentas-do-dispositivo-o-llm-pede-o-pi-executa-e-o-resultado-é-a-resposta):
+  o resultado da ferramenta é a resposta, sem segunda rodada.
+- [D22](#d22--o-histórico-guarda-a-chamada-de-ferramenta-não-só-a-frase-falada):
+  o histórico precisa guardar `tool_call`, não só a frase falada. Só foi
+  encontrado porque o histórico é um `list[Message]` que dá para imprimir.
+- [D24](#d24--busca-na-internet-sem-chave-e-a-primeira-ferramenta-não-terminal):
+  a quebra de frase não pode partir "384.400".
+
+Nenhuma delas é configuração de framework. São decisões sobre o que entra no
+prompt e o que sai como fala — exatamente a camada que um harness abstrai.
+
+### O modelo
+
+Hermes (NousResearch) é treinado para *function calling*, e o argumento faria
+sentido se o gargalo fosse esse. Não é: a bancada do
+[D20](#d20--o-modelo-passa-a-ser-o-qwen38b-com-o-raciocínio-desligado) mediu o
+qwen3:8b em **5/5** na escolha de ferramenta. O que faltava era fundamentação, e
+foi a busca que resolveu, não o modelo.
+
+Restrição de hardware, registrada para não se perder: a placa aqui tem 6 GB e o
+qwen3:8b já ocupa 5,2. Um Hermes útil (8B) empata; qualquer coisa maior não cabe
+sem descarregar o modelo entre turnos.
+
+### Onde um harness ganharia de verdade
+
+**Busca de múltiplos passos.** Hoje a resposta usa só os trechos que o buscador
+devolve; um agente de pesquisa abriria as páginas, leria, refinaria a consulta e
+sintetizaria. A qualidade melhoraria de verdade.
+
+O que impede não é preguiça, é o orçamento: o turno com busca já mede 7 a 12 s
+contra o 1,5 s que a seção 11 orça para o nível 2. Um laço de pesquisa
+multi-passo custa 20 a 40 s, e ninguém espera isso falando com um aparelho no
+quarto.
+
+**O passo seguinte, se o trecho do buscador não bastar,** é buscar o texto da
+primeira página e mandá-lo junto: ~30 linhas em `search.py`, sem framework
+nenhum. Se depois disso ainda faltar, a conversa sobre harness volta — com
+número, e não com intuição.
+
+**Revisar esta decisão quando:** aparecerem perguntas reais em que o trecho do
+buscador é insuficiente (o log de nível 2 registra as frases), ou quando o LLM
+sair do Ollama local para um modelo de nuvem e o orçamento de latência mudar de
+forma.

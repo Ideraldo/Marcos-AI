@@ -13,6 +13,17 @@ contra os multilíngues que apenas suportam pt. Veja tudo com `python -m lab.lis
 Medidas em: Windows 11, Python 3.12, CPU (sem GPU). Conjunto: as sete frases de
 `lab/phrases.py`. **Na Pi 5, conte com 3 a 5 vezes esses tempos.**
 
+**Este arquivo é só STT e TTS.** As medições de LLM e de ferramentas nasceram
+depois, com o assistente já rodando, e por isso moram nas decisões que elas
+motivaram — não há script de bancada para elas:
+
+| O que foi medido | Onde |
+|---|---|
+| llama3.1:8b × qwen3:4b × qwen3:8b: ferramenta certa, conhecimento geral, latência | [D19](../docs/decisions.md), [D20](../docs/decisions.md) |
+| `think=true` × `think=false`: acerto factual e latência | [D20](../docs/decisions.md) |
+| Histórico com e sem `tool_call`: 0/3 contra 3/3 chamadas | [D22](../docs/decisions.md) |
+| Latência da busca e do turno fundamentado | [D24](../docs/decisions.md) |
+
 ---
 
 ## TTS
