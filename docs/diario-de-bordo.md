@@ -1757,6 +1757,49 @@ voce> quais aparelhos tem              -> Tem RUIPC (tocando agora), Web Player
                                           (Chrome) e Echo Dot de Ideraldo.
 ```
 
+### Tocando em cada canto da casa
+
+Testei em tudo que existe. O celular só apareceu na lista depois de eu abrir o
+app **e** ele entrar em atividade — um Connect device precisa se anunciar, e não
+dá para acordar um que não está lá.
+
+| Pedido | Onde tocou |
+|---|---|
+| `"iphone"` | iPhone |
+| `"celular"` | iPhone |
+| `"echo dot"` | Echo Dot de Ideraldo |
+| `"caixa de som"` | Echo Dot |
+| nada | o aparelho ativo |
+
+O `"celular"` só funciona por causa de uma coisa que eu não tinha previsto:
+**ninguém fala o nome do aparelho.** Ninguém diz "toca no iPhone", diz "toca no
+celular". A primeira tentativa mandou "celular" para dentro da busca e tocou a
+*Construção do Ney Matogrosso*. A API devolve o `type` de cada aparelho
+(`Smartphone`, `Speaker`, `Computer`), então virou uma tabela de como as pessoas
+chamam cada tipo.
+
+**E aí eu quebrei a correção anterior.** Pedi para tocar no `"marcos"` — a Pi,
+que não existe ainda. A regra "se não é aparelho, joga na busca" transformou isso
+numa busca por "Construção Marcos" e tocou, de novo, outra gravação. Sem avisar
+nada.
+
+Ou seja: eu tinha trocado um erro silencioso por outro erro silencioso. A saída
+foi distinguir os dois casos por evidência, não por adivinhação — o nome só vira
+busca se **não parecer** aparelho, e parece quando é o nome configurado em
+`SPOTIFY_DEVICE` ou uma palavra de tipo:
+
+```
+pedindo 'marcos'  -> Nao achei marcos entre os aparelhos ligados.
+pedindo 'tv'      -> Nao achei tv entre os aparelhos ligados.
+split do artista  -> Tocando Construcao, de Chico Buarque.
+```
+
+**O "toca direto no Marcos" ainda não existe**, e é bom deixar isso claro: não é
+bug, é hardware. Não há Pi, logo não há raspotify, logo não há aparelho chamado
+Marcos. O que dá para afirmar hoje é que o caminho até ele está pronto e testado
+— o dia em que a Pi anunciar esse nome, ela entra na lista como qualquer outro
+aparelho e vira o padrão sozinha.
+
 Fica anotado para a Fase 6, junto com a Pi: instalar o raspotify, e resolver o
 **ducking** — o `librespot` e o Piper disputam a mesma placa de som, e se o Marcos
 precisa falar enquanto a música toca, alguém tem que abaixar. É o mesmo problema

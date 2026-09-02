@@ -245,6 +245,72 @@ class TestEscolhaDeAparelho:
         assert ("PUT", "/v1/me/player/play") in api.chamadas
 
 
+class TestFalarOTipoEmVezDoNome:
+    """"Toca no celular", e nao "toca no iPhone".
+
+    Sem isto, "celular" nao casava com nada, caia no fallback e virava parte da
+    busca: pedir Construcao no celular tocou a versao do Ney Matogrosso.
+    """
+
+    @pytest.fixture
+    def parque(self, fake):
+        api, client = fake
+        api.devices = [
+            {"id": "pc", "is_active": True, "name": "RUIPC", "type": "Computer"},
+            {"id": "fone", "is_active": False, "name": "iPhone", "type": "Smartphone"},
+            {"id": "echo", "is_active": False, "name": "Echo Dot de Ideraldo", "type": "Speaker"},
+        ]
+        return api, client
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "falado, esperado",
+        [
+            ("celular", "fone"),
+            ("telefone", "fone"),
+            ("computador", "pc"),
+            ("pc", "pc"),
+            ("notebook", "pc"),
+            ("caixa de som", "echo"),
+            ("caixinha", "echo"),
+            ("televisao", None),  # nao existe TV no parque
+        ],
+    )
+    async def test_casa_pelo_tipo(self, parque, falado, esperado):
+        api, client = parque
+        if esperado is None:
+            with pytest.raises(SpotifyError):
+                await client._device_id(falado)
+        else:
+            assert await client._device_id(falado) == esperado
+
+    @pytest.mark.asyncio
+    async def test_nome_ganha_do_tipo(self, fake):
+        # Se alguem batizou a caixa de som de "Computador", o nome que a pessoa
+        # deu vale mais que o rotulo da API.
+        api, client = fake
+        api.devices = [
+            {"id": "verdadeiro", "is_active": True, "name": "RUIPC", "type": "Computer"},
+            {"id": "batizado", "is_active": False, "name": "Computador", "type": "Speaker"},
+        ]
+        assert await client._device_id("computador") == "batizado"
+
+    @pytest.mark.asyncio
+    async def test_entre_dois_do_mesmo_tipo_prefere_o_ativo(self, fake):
+        api, client = fake
+        api.devices = [
+            {"id": "parado", "is_active": False, "name": "PC velho", "type": "Computer"},
+            {"id": "tocando", "is_active": True, "name": "RUIPC", "type": "Computer"},
+        ]
+        assert await client._device_id("computador") == "tocando"
+
+    @pytest.mark.asyncio
+    async def test_tocar_no_celular_nao_suja_a_busca(self, parque):
+        api, client = parque
+        await client.tocar("Construcao Chico Buarque", aparelho="celular")
+        assert api.ultima_busca == "Construcao Chico Buarque"
+
+
 class TestQuandoOModeloConfundeOsCampos:
     """`busca` e `aparelho` sao dois campos de texto livre lado a lado, e o
     modelo divide errado: "toca Construcao do Chico Buarque" virou
@@ -267,6 +333,24 @@ class TestQuandoOModeloConfundeOsCampos:
         api.devices = [{"id": "pc", "is_active": True, "name": "RUIPC"}]
         await client.tocar("Construcao Chico Buarque", aparelho="chico buarque")
         assert api.ultima_busca == "Construcao Chico Buarque"
+
+    @pytest.mark.asyncio
+    async def test_o_preferido_desligado_avisa_em_vez_de_buscar(self, fake):
+        # "toca no marcos" com a Pi desligada nao pode virar uma busca por
+        # "Construcao Marcos" -- foi o que aconteceu, e tocou outra versao.
+        api, client = fake
+        api.devices = [{"id": "pc", "is_active": True, "name": "RUIPC", "type": "Computer"}]
+        client._preferido = "Marcos"
+        with pytest.raises(SpotifyError, match="nao achei"):
+            await client.tocar("Construcao", aparelho="marcos")
+        assert api.ultima_busca is None  # nem chegou a buscar
+
+    @pytest.mark.asyncio
+    async def test_tipo_ausente_avisa_em_vez_de_buscar(self, fake):
+        api, client = fake
+        api.devices = [{"id": "pc", "is_active": True, "name": "RUIPC", "type": "Computer"}]
+        with pytest.raises(SpotifyError, match="nao achei"):
+            await client.tocar("Construcao", aparelho="caixa de som")
 
     @pytest.mark.asyncio
     async def test_aparelho_de_verdade_continua_valendo(self, fake):

@@ -237,6 +237,13 @@ speaker and being a remote control for one (D23). Until the Pi exists the name
 matches nothing and the fallback keeps today's behaviour. `listar_aparelhos` and
 `trocar_aparelho` cover "where can it play" and "move it to the echo dot".
 
+Devices match by exact name, then by name fragment, then by **spoken type** --
+nobody says "play on the iPhone", they say "play on the phone", so `celular`,
+`caixa de som` and `computador` map onto the `type` the API reports. Verified by
+actually playing on each: phone, Echo Dot, and PC. A device only appears once
+its Spotify app is open and active, which is one more argument for raspotify on
+the Pi -- it announces itself around the clock.
+
 Home Assistant is out of scope -- one smart bulb does not justify Tailscale and
 phase 5.
 

@@ -865,9 +865,33 @@ aparelhos e transferir. O *Web Playback SDK* continua sem uso — ele serve para
 tocar dentro de um navegador.
 
 **Enquanto a Pi não existe**, o nome `Marcos` não casa com nada e a escolha cai
-para o aparelho ativo. Verificado com a conta real: preferido ausente → tocou no
-`RUIPC`; `"echo"` → `Echo Dot de Ideraldo`; `"geladeira"` → *"não achei o
-aparelho geladeira. Tem: RUIPC, Web Player (Chrome), Echo Dot de Ideraldo"*.
+para o aparelho ativo. Verificado com a conta real, tocando de verdade em cada
+um:
+
+| Pedido | Onde tocou |
+|---|---|
+| `"iphone"` | iPhone |
+| `"celular"` | iPhone (pelo tipo `Smartphone`) |
+| `"echo dot"` | Echo Dot de Ideraldo |
+| `"caixa de som"` | Echo Dot (pelo tipo `Speaker`) |
+| nada | o aparelho ativo, porque o preferido não existe |
+| `"marcos"` | *"não achei marcos entre os aparelhos ligados"* |
+| `"geladeira"` | volta para a busca — não parece aparelho |
+
+O celular só entra na lista quando o app está aberto e ativo no aparelho: um
+Connect device precisa se anunciar, e não dá para "acordar" um que não está lá.
+É mais um argumento para o `raspotify` na Pi, que fica anunciado o tempo todo.
+
+**Casar aparelho pelo tipo falado, não só pelo nome.** Ninguém diz *"toca no
+iPhone"*: diz *"toca no celular"*. A API devolve `type` (`Computer`,
+`Smartphone`, `Speaker`, `TV`), e `TIPOS_FALADOS` mapeia as palavras que as
+pessoas usam. A ordem é nome exato → trecho do nome → tipo, e o tipo vem por
+último de propósito: se alguém batizou uma caixa de som de "Computador", o nome
+que a pessoa deu ganha do rótulo da API.
+
+Sem essa etapa, *"toca no celular"* não casava com nada e a palavra "celular"
+caía dentro da busca — pedir Construção no celular tocou a versão do Ney
+Matogrosso.
 
 **Um defeito de desenho de parâmetro, achado em uso.** `busca` e `aparelho` são
 dois campos de texto livre lado a lado, e o modelo divide errado:
@@ -882,6 +906,14 @@ O artista foi parar no campo do aparelho, a busca virou só "Construção", e to
 `aparelho` é conferido contra a lista real, e **se não for um aparelho, volta
 para dentro da busca**. Recusar seria pior — a frase era perfeitamente
 compreensível.
+
+**E a correção da correção.** Dobrar tudo que não casa para dentro da busca
+esconde o caso legítimo: pedir para tocar num aparelho que **existe e está
+desligado**. Testando *"toca no marcos"* antes de a Pi existir, a busca virou
+"Construção Marcos" e tocou outra gravação — silenciosamente. Agora o nome só é
+dobrado na busca se **não parecer** referência a aparelho; parece quando é o
+nome configurado em `SPOTIFY_DEVICE` ou uma palavra de tipo. Nesses dois casos a
+resposta é *"não achei X entre os aparelhos ligados"*, que é a verdade.
 
 **O que fica para a Fase 6, junto com a Pi:**
 

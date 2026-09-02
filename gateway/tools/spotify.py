@@ -48,22 +48,53 @@ def _sem_acento(texto: str) -> str:
     return "".join(c for c in texto if unicodedata.category(c) != "Mn").strip()
 
 
-def _casar_aparelho(devices: list[dict], nome: str) -> dict | None:
-    """Acha o aparelho pelo nome, do jeito que alguém falaria.
+#: Como as pessoas chamam os tipos de aparelho, em português falado. Ninguém diz
+#: "toca no iPhone": diz "toca no celular". O `type` que a API devolve
+#: (Computer, Smartphone, Speaker, TV) é o que permite casar isso sem saber o
+#: nome que o dono deu ao aparelho.
+TIPOS_FALADOS: dict[str, tuple[str, ...]] = {
+    "Smartphone": ("celular", "telefone", "fone", "iphone", "android"),
+    "Computer": ("computador", "pc", "notebook", "laptop", "maquina"),
+    "Speaker": ("caixa", "caixinha", "caixa de som", "som", "alto falante", "speaker"),
+    "TV": ("tv", "televisao", "televisor"),
+    "AVR": ("receiver", "aparelho de som"),
+    "CastVideo": ("chromecast", "cast"),
+}
 
-    Ninguém diz "Echo Dot de Ideraldo" inteiro: diz "echo", "echo dot", "a
-    caixinha". Casamento é por trecho e sem acento, com o nome exato primeiro
-    para "Marcos" não perder para "Marcos (quarto)" se os dois existirem.
+
+def _casar_aparelho(devices: list[dict], nome: str) -> dict | None:
+    """Acha o aparelho do jeito que alguém falaria.
+
+    Três tentativas, nesta ordem:
+
+    1. **Nome exato** -- para "Marcos" não perder para "Marcos (quarto)" quando
+       os dois existirem.
+    2. **Trecho do nome** -- ninguém diz "Echo Dot de Ideraldo" inteiro, diz
+       "echo".
+    3. **Tipo falado** -- "celular" não é trecho de "iPhone". Sem esta etapa,
+       pedir para tocar no celular mandava a palavra "celular" para dentro da
+       busca, e o aparelho tocava outra gravação da mesma música.
+
+    O tipo vem por último de propósito: se alguém batizou uma caixa de som de
+    "Computador", o nome que a pessoa deu ganha do rótulo da API.
     """
     alvo = _sem_acento(nome)
     if not alvo:
         return None
+
     for d in devices:
         if _sem_acento(d.get("name", "")) == alvo:
             return d
     for d in devices:
         if alvo in _sem_acento(d.get("name", "")):
             return d
+
+    tipos = {t for t, palavras in TIPOS_FALADOS.items() if alvo in palavras}
+    if tipos:
+        # Entre vários do mesmo tipo, o que já está tocando; senão, o primeiro.
+        candidatos = [d for d in devices if d.get("type") in tipos]
+        if candidatos:
+            return next((d for d in candidatos if d.get("is_active")), candidatos[0])
     return None
 
 
@@ -197,6 +228,21 @@ class SpotifyClient:
             raise SpotifyError("abra o Spotify em algum aparelho primeiro")
         return devices
 
+    def _parece_aparelho(self, nome: str) -> bool:
+        """O nome se refere a um aparelho, mesmo que ele não esteja na lista?
+
+        Duas evidências bastam, e nenhuma delas depende de adivinhação: é o nome
+        configurado em `SPOTIFY_DEVICE` (a Pi, que pode estar desligada), ou é
+        uma das palavras que designam um **tipo** de aparelho ("celular",
+        "caixa de som"). Nos dois casos a pessoa está falando de onde tocar, e
+        merece ouvir que aquilo não está disponível em vez de ouvir a música
+        errada.
+        """
+        alvo = _sem_acento(nome)
+        if self._preferido and alvo == _sem_acento(self._preferido):
+            return True
+        return any(alvo in palavras for palavras in TIPOS_FALADOS.values())
+
     async def _existe_aparelho(self, nome: str) -> bool:
         try:
             return _casar_aparelho(await self.aparelhos(), nome) is not None
@@ -262,10 +308,19 @@ class SpotifyClient:
     async def tocar(self, busca: str, aparelho: str | None = None) -> str:
         # O modelo confunde os dois campos de texto: pedindo "toca Construção do
         # Chico Buarque" ele mandou {busca: "Construcao", aparelho: "Chico
-        # Buarque"}, e o aparelho tocou outra música do disco errado. Se o que
-        # veio em `aparelho` não é um aparelho, ele era parte do pedido -- e
-        # devolver a busca inteira é melhor que errar a música ou recusar.
+        # Buarque"}, e o aparelho tocou a gravação errada. Se o que veio em
+        # `aparelho` não é aparelho nenhum, ele era parte do pedido.
+        #
+        # Mas nem tudo que não casa é engano do modelo: pedir para tocar num
+        # aparelho que existe e está desligado é um pedido legítimo, e nesse
+        # caso jogar o nome na busca esconde o problema -- foi o que aconteceu
+        # com "toca no marcos" antes de a Pi existir, que virou uma busca por
+        # "Construção Marcos" e tocou outra versão da música.
         if aparelho and not await self._existe_aparelho(aparelho):
+            if self._parece_aparelho(aparelho):
+                # Sem artigo: "o tv" e "o caixa de som" saem errados, e a
+                # frase vai ser falada em voz alta.
+                raise SpotifyError(f"nao achei {aparelho} entre os aparelhos ligados")
             log.info("%r nao e aparelho; tratando como parte da busca", aparelho)
             if _sem_acento(aparelho) not in _sem_acento(busca):
                 busca = f"{busca} {aparelho}".strip()
