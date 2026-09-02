@@ -915,9 +915,41 @@ dobrado na busca se **não parecer** referência a aparelho; parece quando é o
 nome configurado em `SPOTIFY_DEVICE` ou uma palavra de tipo. Nesses dois casos a
 resposta é *"não achei X entre os aparelhos ligados"*, que é a verdade.
 
+**Como os nomes de aparelho existem.** Cada cliente de Spotify se **anuncia**:
+ao subir, registra-se nos servidores (e na rede local, por mDNS) dizendo o nome
+que ele mesmo escolheu. Ninguém batiza de fora. Na conta desta casa:
+
+| Nome | Quem definiu |
+|---|---|
+| `RUIPC` | o hostname do Windows — o app desktop usa o nome da máquina |
+| `iPhone` | *Ajustes → Geral → Sobre → Nome* |
+| `Web Player (Chrome)` | o próprio Spotify, a partir do navegador |
+| `Echo Dot de Ideraldo` | o nome dado no app da Alexa |
+
+No `raspotify` isso é uma linha em `/etc/raspotify/conf`, confirmada na fonte:
+
+```
+#LIBRESPOT_NAME="Librespot"
+```
+
+Comentada, o padrão vira `raspotify (hostname)`. Descomentar com
+`LIBRESPOT_NAME="Marcos"` e `sudo systemctl restart raspotify` faz a Pi entrar na
+lista com esse nome, indistinguível dos outros para a API.
+
+**Consequência de contrato:** `LIBRESPOT_NAME` na Pi e `SPOTIFY_DEVICE` no
+gateway têm que ser a **mesma string**. É a única coisa que liga um ao outro.
+
+**E por que o casamento é por nome, nunca por id:** o `device_id` que a API
+devolve não é estável entre reinicializações. Guardar o id do aparelho preferido
+funcionaria até o primeiro reboot da Pi, e falharia num lugar onde ninguém
+procuraria. Aqui isso foi sorte de desenho e não previsão, mas fica registrado
+para não ser "otimizado" depois.
+
 **O que fica para a Fase 6, junto com a Pi:**
 
-- Instalar o raspotify e nomear o aparelho `Marcos`.
+- Instalar o raspotify (`curl -sL https://dtcooper.github.io/raspotify/install.sh | sh`)
+  e pôr `LIBRESPOT_NAME="Marcos"` no `/etc/raspotify/conf`. Não roda em ARMv6
+  (Pi 1 e Zero v1); a Pi 5 está muito acima disso.
 - **Ducking**: o `librespot` e o Piper disputam a mesma placa de som. Se o Marcos
   precisa falar enquanto a música toca, alguém tem que abaixar a música. É o
   mesmo problema do barge-in da Fase 7 (interromper o assistente falando), e
