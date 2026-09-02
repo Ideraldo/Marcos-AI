@@ -1093,3 +1093,32 @@ número, e não com intuição.
 buscador é insuficiente (o log de nível 2 registra as frases), ou quando o LLM
 sair do Ollama local para um modelo de nuvem e o orçamento de latência mudar de
 forma.
+
+---
+
+## D26 — Função que decide sobre "agora" recebe o agora por parâmetro
+
+**Data:** 2026-09-02
+**O plano diz:** nada. É uma regra de código, não de arquitetura.
+
+**O que mudou:** `_proxima_ocorrencia` passou a aceitar `agora` como parâmetro
+opcional, em vez de chamar `datetime.now()` por dentro.
+
+**Por quê:** o teste do alarme quebrou sozinho às 00:02, sem nenhuma mudança de
+código. Ele calculava "duas horas atrás" a partir do relógio e assumia que isso
+seria ontem; à meia-noite e dois, duas horas atrás é 22h, e 22h **de hoje** ainda
+está no futuro. O alarme foi corretamente marcado para hoje, e a asserção de que
+cairia amanhã falhou.
+
+**O código estava certo. O teste é que era refém do relógio** — e passou dois
+dias assim porque a suíte nunca tinha rodado de madrugada.
+
+**Consequências:**
+- O teste deixou de usar horas relativas e passou a cobrir cinco bordas fixas,
+  incluindo as duas da virada do dia.
+- A regra vale para o resto: função que decide alguma coisa sobre "agora" recebe
+  o agora de quem chama. Sem isso ela só é testável no horário em que funciona.
+- O agendador (`device/local/scheduler.py`) ainda lê `time.time()` por dentro,
+  e é o outro lugar onde isso vai doer — ali o problema não é o horário, é o
+  relógio da Pi, que pode acordar em 1970 e ser corrigido pelo NTP no meio de
+  uma espera.

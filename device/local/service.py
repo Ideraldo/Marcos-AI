@@ -182,12 +182,18 @@ def _descrever(item: Schedule) -> str:
     return f"um alarme para as {_hora_por_extenso(alvo.hour, alvo.minute)}"
 
 
-def _proxima_ocorrencia(hora: int, minuto: int) -> datetime:
+def _proxima_ocorrencia(hora: int, minuto: int, agora: datetime | None = None) -> datetime:
     """O próximo HH:MM. Hoje se ainda não passou, amanhã se já passou.
 
     É o que qualquer pessoa quer dizer com "me acorda às 7" às onze da noite, e
     é a diferença entre um despertador e um alarme que já nasce vencido.
+
+    `agora` é injetável por causa do teste, não por elegância: a versão que lia
+    o relógio por dentro só podia ser testada com horas relativas ao momento da
+    execução, e isso quebrou à meia-noite e dois — "duas horas atrás" virou 22h,
+    que àquela hora ainda estava no futuro. O código estava certo e o teste é
+    que era refém do relógio.
     """
-    agora = datetime.now()
+    agora = agora or datetime.now()
     alvo = agora.replace(hour=hora, minute=minuto, second=0, microsecond=0)
     return alvo + timedelta(days=1) if alvo <= agora else alvo

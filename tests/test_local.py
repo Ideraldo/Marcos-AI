@@ -71,20 +71,35 @@ class TestServicos:
     def test_singular_no_timer_de_um_minuto(self, services):
         assert services.handle(match("timer de um minuto")) == "Timer de 1 minuto."
 
-    def test_alarme_no_futuro_e_hoje(self, services, store):
-        futuro = (datetime.now() + timedelta(hours=2)).hour
-        services.handle(match(f"me acorda às {futuro}"))
-        alvo = datetime.fromtimestamp(store.pending()[0].fire_at)
-        assert alvo > datetime.now()
+    def test_alarme_sempre_cai_no_futuro(self, services, store):
+        # Qualquer hora do relógio, o alarme tem que ser depois de agora.
+        for hora in range(0, 24, 3):
+            store._db.execute("DELETE FROM schedules")
+            services.handle(match(f"me acorda às {hora}"))
+            alvo = datetime.fromtimestamp(store.pending()[0].fire_at)
+            assert alvo > datetime.now(), f"alarme das {hora}h nasceu vencido"
 
-    def test_alarme_que_ja_passou_vai_para_amanha(self, services, store):
-        # "me acorda às 7" dito às onze da noite é amanhã, não um alarme que
-        # nasce vencido.
-        passado = (datetime.now() - timedelta(hours=2)).hour
-        services.handle(match(f"me acorda às {passado}"))
-        alvo = datetime.fromtimestamp(store.pending()[0].fire_at)
-        assert alvo > datetime.now()
-        assert alvo.date() > datetime.now().date()
+    @pytest.mark.parametrize(
+        "agora, hora_pedida, dia_esperado",
+        [
+            # A regra: hoje se ainda não passou, amanhã se já passou.
+            ("2026-09-01 08:00", 22, 1),   # de manhã, para as 22h -> hoje
+            ("2026-09-01 23:00", 7, 2),    # à noite, para as 7h -> amanhã
+            ("2026-09-01 07:00", 7, 2),    # na hora exata -> amanhã, não agora
+            # O caso que quebrou o teste antigo: às 00h02, "22h" ainda é hoje.
+            ("2026-09-02 00:02", 22, 2),
+            ("2026-09-02 00:02", 0, 3),    # 00:00 ja passou por dois minutos
+        ],
+    )
+    def test_proxima_ocorrencia_nao_depende_do_relogio(
+        self, agora, hora_pedida, dia_esperado
+    ):
+        from device.local.service import _proxima_ocorrencia
+
+        momento = datetime.strptime(agora, "%Y-%m-%d %H:%M")
+        alvo = _proxima_ocorrencia(hora_pedida, 0, agora=momento)
+        assert alvo.day == dia_esperado
+        assert alvo > momento
 
     def test_cancelar_sem_nada_marcado(self, services):
         assert services.handle(match("cancela")) == "Nao tem nada marcado."

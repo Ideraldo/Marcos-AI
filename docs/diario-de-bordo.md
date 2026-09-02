@@ -1901,6 +1901,31 @@ um framework. Se **depois disso** ainda faltar, a conversa volta com número.
 X?" quase nunca é sim ou não. É "o que exatamente ela faria que meu código já não
 faz, e o que eu deixo de enxergar em troca".*
 
+### E, à meia-noite e dois, um teste quebrou sozinho
+
+Última rodada do dia, nenhum código tocado, e:
+
+```
+FAILED tests/test_local.py::TestServicos::test_alarme_que_ja_passou_vai_para_amanha
+E   assert datetime.date(2026, 9, 2) > datetime.date(2026, 9, 2)
+```
+
+O teste calculava "duas horas atrás" com `datetime.now() - 2h` e pegava só a
+hora. Às **00:02**, duas horas atrás é 22h — de ontem. Mas 22h **de hoje** ainda
+está no futuro, então o alarme foi marcado para hoje mesmo, e a asserção de que
+ele cairia amanhã falhou.
+
+O código estava certo. O teste é que era refém do relógio, e passou por dois dias
+só porque eu nunca tinha rodado a suíte de madrugada.
+
+A correção não foi ajustar a asserção: foi tirar o relógio de dentro da função.
+`_proxima_ocorrencia` agora aceita o "agora" por parâmetro, e o teste passou a
+cobrir as cinco bordas de propósito — inclusive as duas da virada do dia. Função
+que lê o relógio por dentro só pode ser testada no horário em que ela funciona.
+
+*Lição para o vídeo: o último teste do dia falhou porque o dia virou. Não havia
+bug no despertador — havia um teste que só era verdade de manhã.*
+
 ---
 
 ## Onde estamos agora
