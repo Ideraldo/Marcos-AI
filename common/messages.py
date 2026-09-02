@@ -52,8 +52,17 @@ class Utterance:
 
 @dataclass
 class ToolResult:
+    """O que a execução local produziu, de volta para o gateway.
+
+    `value` existe porque nem toda ferramenta é só "deu certo": "quais alarmes
+    eu tenho" precisa devolver a lista para o LLM formular a resposta. Continua
+    sendo texto -- o gateway não conhece as estruturas do dispositivo, e não
+    deve conhecer.
+    """
+
     id: str
     ok: bool
+    value: str | None = None
     error: str | None = None
     type: Literal["tool_result"] = "tool_result"
 

@@ -1248,6 +1248,146 @@ estavam ligadas uma na outra.*
 
 ---
 
+## Dia 6 — A Fase 3 começa, e o modelo pequeno mostra o teto
+
+*(mesma sessão longa do Dia 5; separo aqui porque é outro capítulo)*
+
+Escolhi a ordem das ferramentas: primeiro as que voltam para o dispositivo,
+depois Spotify, depois busca web. Home Assistant fica de fora — eu tenho **uma**
+lâmpada Elgin controlada pela Alexa, e uma lâmpada não paga o Tailscale, o HA e a
+Fase 5 inteira.
+
+Comecei pela que não depende de conta, chave nem API de ninguém.
+
+### O ciclo que faltava fechar
+
+Tudo já estava lá e desligado. `Tool`, `Delta.tool_name`, `tool_call` no
+protocolo, `tool_result` de volta — a tubulação inteira construída em fases
+anteriores. E uma linha em `gateway/api/session.py` resumindo a fase:
+
+```python
+async for delta in self._llm.respond(self._conversation.prompt(), tools=[]):
+```
+
+`tools=[]`. Ninguém nunca ofereceu ferramenta nenhuma ao modelo.
+
+Do outro lado, o dispositivo respondia `not implemented` a qualquer `tool_call`.
+Depois da Fase 2 isso ficou absurdo: o executor existe, é o mesmo `LocalServices`
+que o regex usa. A frase entra por caminhos diferentes — regex aqui, modelo lá —
+e termina no mesmo código, com os mesmos slots ([D18](decisions.md)).
+
+E funcionou de primeira, com a frase que eu tinha usado no Dia 5 como exemplo do
+que o regex **não** pega:
+
+```
+voce> me lembra de tirar o bolo quando der uma hora e meia
+  [ferramenta criar_timer {'segundos': '5400'}]
+```
+
+Repare no `'5400'`: **string**, com o schema dizendo `integer`. Passou porque eu
+converto com `int()`, mas foi sorte virar acerto. Virou teste com o nome do
+modelo dentro, porque isso não é hipótese — é o que ele faz.
+
+### Onde eu estava reescrevendo a resposta certa
+
+Perguntei *"o que eu tenho marcado"* com um timer e um alarme na fila. Ele
+respondeu só o alarme.
+
+Fui olhar o banco, e os dois estavam lá. O dispositivo tinha devolvido os dois.
+**O modelo apagou um item ao reescrever a lista.**
+
+Minha primeira reação foi consertar pelo prompt: *"repita o resultado sem omitir
+nenhum item"*. Ficou pior — o modelo passou a narrar:
+
+```
+marcos> Eu não tenho acesso direto à sua agenda, mas posso chamar a
+        ferramenta "listar_agendamentos" para obter mais informações.
+marcos> Chame a ferramenta "listar_agendamentos".
+```
+
+Aí caiu a ficha de que a abordagem estava errada, não a redação. **A resposta do
+dispositivo já é uma frase pronta para ser falada.** Passar ela por uma segunda
+rodada de LLM só adiciona latência e chance de perder informação. Ferramentas
+terminais: o resultado é a resposta, e vai ao ar como está.
+
+| | Com 2ª rodada | Terminal |
+|---|---|---|
+| `listar` | 3,7 s, item perdido | **2,1 s**, completa |
+| `criar_alarme` | 4,1 s | **2,3 s** |
+
+Ganhei latência corrigindo um bug de correção. E de brinde a frase falada passou
+a ser idêntica venha ela do regex ou do LLM, que era o ponto do D18 desde o
+começo.
+
+*(Entre as duas medições eu perdi um tempo bom achando que a correção não tinha
+funcionado. Tinha: o gateway antigo continuava segurando a porta 8000, o novo
+morria com `error while attempting to bind`, e eu estava testando o código velho
+achando que era o novo. `pkill` não mata processo do Windows.)*
+
+### O achado que muda a Fase 3
+
+No fim, quase de passagem, perguntei uma coisa boba:
+
+```
+voce> qual a capital da australia
+marcos> Não sei.
+```
+
+O llama3.1:8b sabe que é Canberra. Testei isolando:
+
+| | "qual a capital da Austrália" |
+|---|---|
+| **Com** ferramentas declaradas | "Não sei a resposta para essa pergunta." |
+| **Sem** ferramentas | "A capital da Austrália é Canberra." |
+
+Mesma pergunta, mesmo prompt, a única diferença sendo a presença das quatro
+ferramentas na chamada. **Declarar ferramentas destrói o conhecimento geral do
+modelo.** Medi sobre dez frases:
+
+| | |
+|---|---|
+| Chamou a ferramenta certa | 4 de 5 |
+| Inventou chamada inexistente | 0 de 5 |
+| Respondeu conhecimento geral | **0 de 5** |
+
+Tentei três saídas, e as três foram piores ([D19](decisions.md)):
+
+**Tirar a instrução "se não souber, diga que não sabe".** Ele passou a inventar
+ferramenta — cuspiu `{"name": "pesquisar", ...}` como texto puro, uma ferramenta
+que não existe, e chamou `criar_timer` para *"quem escreveu Dom Casmurro"*. É
+exatamente o modo de falha que o critério de aceite da Fase 3 nomeia. Ou seja: a
+instrução que me incomodava estava **segurando** um comportamento pior.
+
+**Instruir que ferramentas servem só para timer e alarme.** Nada mudou.
+
+**Separar em duas chamadas — uma decide, outra responde**, que é literalmente a
+arquitetura da seção 6 do plano com um modelo só. Foi o pior de todos: com prompt
+de decisão, ele chama ferramenta para tudo. *"Qual a capital da Austrália"* virou
+`criar_alarme(hora=0, minuto=0)`.
+
+Cogitei um portão por palavra-chave — só oferecer ferramentas quando a frase
+menciona timer, alarme, acorda, lembra. Mede bem: 6 de 8 pedidos de agenda
+passam, 8 de 9 perguntas gerais são barradas. Mas erra nos dois sentidos, e um
+dos erros é feio: *"me conta uma piada"* abre o portão por causa do **"conta"**,
+e ferramenta aberta numa frase dessas é um timer falso sendo criado. Não
+implementei. Trocar uma regressão barulhenta por uma silenciosa não é troca boa o
+bastante para eu fazer sozinho.
+
+### A pergunta do D11 foi respondida por um caminho torto
+
+A D11 tinha deixado em aberto: *"se um modelo aberto de 8B dá conta de busca
+fundamentada"*. A resposta chegou **antes de a busca existir**, e não é sobre
+busca: ele não dá conta de ter ferramentas e conhecimento ao mesmo tempo.
+
+O plano já sabia disso na seção 6 — *"modelo pequeno classifica, modelo grande
+responde"*. Eu li essa linha há dias e ela não significava nada até eu medir.
+
+*Lição para o vídeo: o bug mais importante do dia apareceu numa pergunta que não
+tinha nada a ver com o que eu estava construindo. Eu implementei ferramentas, e
+o que quebrou foi a capital da Austrália.*
+
+---
+
 ## Onde estamos agora
 
 **O Marcos me ouve, pensa, responde com a minha voz — e agora também resolve
@@ -1279,6 +1419,8 @@ Fechado até aqui:
 | Binários | fora do git (D12) | 32 GB, e o `.onnx` é a minha voz |
 | Imagem do gateway | só `requirements-gateway.txt` (D15) | sem STT, sobrou fastapi + httpx |
 | Nível 0 | regex + SQLite no dispositivo (D17) | o despertador não pode depender do Wi-Fi |
+| Ferramentas | declaradas no gateway, executadas no Pi (D18) | a execução é sempre local |
+| Resultado de ferramenta | vai ao ar sem 2ª rodada de LLM (D18) | o modelo perdia item ao resumir |
 | Boot | sobe sem o gateway (D17) | senão o critério da Fase 2 é impossível |
 
 **Fase 0 cumprida por inteiro, e além.** O critério era o loop em dois processos;
@@ -1300,8 +1442,19 @@ Falta da Fase 2, e é escopo consciente (D17): a similaridade por **embeddings**
 que espera o log real de nível 2 dizer quais paráfrases as pessoas usam; e o
 **volume**, que depende do mixer do sistema operacional.
 
-Próximo marco: **Fase 3 — ferramentas no gateway** (busca web, Spotify, Home
-Assistant), ou a Fase 4 (o rosto). Nenhuma das duas depende de hardware.
+**Fase 3 começada.** As ferramentas que voltam para o dispositivo — timer,
+alarme, listar, cancelar — funcionam ponta a ponta: o LLM entende a paráfrase que
+o regex não pega, e quem grava e dispara continua sendo o Pi (D18).
+
+**Mas o critério de aceite da Fase 3 está cumprido pela metade, e a metade que
+falta é do modelo.** Com ferramentas declaradas, o llama3.1:8b para de responder
+conhecimento geral: 4 de 5 ferramentas certas, 0 chamadas inventadas, e 0 de 5
+perguntas gerais respondidas (D19). Três alternativas foram medidas e todas são
+piores. **Isto é uma decisão em aberto e ela é sua** — modelo maior, modelo
+melhor em ferramentas, ou o modelo de nuvem que a seção 6 sempre apontou.
+
+Ordem escolhida para o resto da Fase 3: **Spotify**, depois **busca web**.
+Home Assistant fica fora: uma lâmpada Elgin não paga o Tailscale e a Fase 5.
 
 Marco seguinte, planejado: **modo tradutor portátil.** Falar português e o
 aparelho falar inglês ou chinês, e o contrário. Duas das três peças já existem —
@@ -1322,7 +1475,8 @@ Em aberto:
   código real. É a maior incerteza do projeto hoje.
 - Qual tamanho de STT cabe na Pi, quando houver Pi para medir (D9)
 - Backup privado do dataset, que hoje existe só num disco
-- Se um modelo aberto de 8B dá conta de busca fundamentada (D11)
+- **Qual modelo** — o 8B não tem ferramentas e conhecimento ao mesmo tempo (D19).
+  É a pergunta em aberto mais urgente do projeto agora
 - Se um bloco 4 de gravações vale a pena (o `prepare --from-run` já deixa barato)
 - Se o gateway deve re-transcrever com um modelo maior — a pergunta de D1 que
   D13 deixou sem caminho, porque o áudio não sobe mais

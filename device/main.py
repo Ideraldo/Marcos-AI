@@ -42,6 +42,7 @@ from device.audio.playback import Speaker  # noqa: E402
 from device.config import config, voice_path  # noqa: E402
 from device.local import LocalServices, Scheduler, ScheduleStore  # noqa: E402
 from device.router import match as match_intent  # noqa: E402
+from device.router.intents import Intent  # noqa: E402
 from device.state import StateMachine  # noqa: E402
 from device.tts import PiperVoiceEngine  # noqa: E402
 from device.ws_client import ConnectionLost, GatewayClient  # noqa: E402
@@ -90,7 +91,9 @@ async def listen_and_transcribe(microphone: Microphone, stt, machine: StateMachi
     return text
 
 
-async def handle_incoming(client: GatewayClient, machine: StateMachine, voice, speaker, falando) -> None:
+async def handle_incoming(
+    client: GatewayClient, machine: StateMachine, voice, speaker, falando, services
+) -> None:
     """Aplica o que o gateway manda: estado, texto para falar, chamadas de ferramenta."""
     spoke_at = None
 
@@ -125,10 +128,11 @@ async def handle_incoming(client: GatewayClient, machine: StateMachine, voice, s
                 print(f"        [primeira fala em {elapsed:.2f}s]")
 
         elif isinstance(message, ToolCall):
-            # A execução é sempre local, venha a intenção de onde vier
-            # (plan section 5, rule 3). device/local/ vai assumir isso.
-            print(f"  [tool_call {message.name} {message.args} -- nao implementado]")
-            await client.send(ToolResult(id=message.id, ok=False, error="not implemented"))
+            # A execução é sempre local, venha a intenção de onde vier (plano,
+            # seção 5, regra 3). O LLM entendeu a frase que o regex não pegou --
+            # mas quem grava e dispara continua sendo este processo.
+            print(f"  [ferramenta {message.name} {message.args}]")
+            await client.send(executar_ferramenta(services, message))
 
         elif isinstance(message, Error):
             print(f"  [erro do gateway: {message.message}]")
@@ -202,6 +206,44 @@ async def run(text_mode: bool) -> None:
             store.close()
 
 
+#: Nome da ferramenta (como o LLM a conhece) -> intenção que `device/local/` já
+#: executa. É a mesma tabela do gateway, do lado de cá: os dois precisam
+#: concordar, e `tests/test_tools.py` é o que garante que concordam.
+FERRAMENTAS = {
+    "criar_timer": "criar_timer",
+    "criar_alarme": "criar_alarme",
+    "listar_agendamentos": "listar",
+    "cancelar_agendamento": "cancelar",
+}
+
+
+def executar_ferramenta(services, call: ToolCall) -> ToolResult:
+    """Executa uma chamada do LLM no mesmo código que o roteador usa.
+
+    A frase entra por um caminho diferente -- regex aqui, modelo lá -- e termina
+    no mesmo `LocalServices`, com os mesmos slots. Se estes dois caminhos
+    divergirem, o aparelho passa a ter dois comportamentos para a mesma frase,
+    dependendo de a internet estar de pé.
+    """
+    intent_name = FERRAMENTAS.get(call.name)
+    if intent_name is None:
+        # Modelo inventando ferramenta que não existe é o modo de falha que o
+        # critério de aceite da Fase 3 nomeia. Dizer que não existe é melhor que
+        # tentar adivinhar o que ele queria.
+        return ToolResult(id=call.id, ok=False, error=f"ferramenta desconhecida: {call.name}")
+
+    try:
+        resposta = services.handle(Intent(name=intent_name, slots=dict(call.args)))
+    except (KeyError, TypeError, ValueError) as exc:
+        # Argumento faltando ou com tipo errado: o modelo erra isso, e o
+        # resultado tem que voltar como falha para ele poder corrigir.
+        return ToolResult(id=call.id, ok=False, error=f"argumentos invalidos: {exc}")
+
+    if resposta is None:
+        return ToolResult(id=call.id, ok=False, error="intencao nao reconhecida")
+    return ToolResult(id=call.id, ok=True, value=resposta)
+
+
 def _ate_falar(machine: StateMachine) -> None:
     """Leva a máquina até SPEAKING pelo caminho que ela permite.
 
@@ -245,7 +287,7 @@ async def answer(client, machine, voice, speaker, services, falando, text: str) 
     log.info("nivel 2 (subiu para o LLM): %r", text)
     try:
         await client.send_utterance(text)
-        await handle_incoming(client, machine, voice, speaker, falando)
+        await handle_incoming(client, machine, voice, speaker, falando, services)
     except ConnectionLost as exc:
         log.warning("turno perdido: %s", exc)
         # Com o gateway fora, o nível 0 continua de pé -- e dizer isso é melhor

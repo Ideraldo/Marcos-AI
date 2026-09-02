@@ -11,6 +11,7 @@ microfone, STT e síntese são assunto do dispositivo.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from fastapi import WebSocket, WebSocketDisconnect
@@ -21,6 +22,7 @@ from common.messages import (
     State,
     StateMessage,
     ToolCall,
+    ToolResult,
     Transcript,
     Utterance,
 )
@@ -28,12 +30,23 @@ from common.serialization import decode, encode
 from gateway.conversation.history import Conversation
 from gateway.llm.base import LLMProvider
 from gateway.timing import Turn
+from gateway.tools import DEVICE_TOOLS, TERMINAL_TOOLS
 
 log = logging.getLogger("marcos.session")
 
 #: Sentence enders that are safe places to start speaking (plan section 11:
 #: streaming TTS is one of the two biggest latency wins).
 BREAKS = ".!?\n"
+
+#: Quantas vezes o modelo pode pedir ferramenta dentro de um turno. O limite não
+#: é paranoia: um modelo pequeno que erra os argumentos tende a repetir a mesma
+#: chamada para sempre, e sem teto isso vira um turno que nunca termina -- com o
+#: aparelho parado em THINKING, esperando uma resposta que não vem.
+MAX_TOOL_ROUNDS = 3
+
+#: Quanto esperar o dispositivo executar. É ação local (SQLite e um agendador),
+#: então é rápida; o limite existe para o caso de o dispositivo sumir no meio.
+TOOL_TIMEOUT = 10.0
 
 
 class Session:
@@ -153,25 +166,56 @@ class Session:
             # final=False: mais frases vêm em seguida nesta mesma resposta.
             await self._send(Transcript(text=sentence.strip(), role="assistant", final=False))
 
-        async for delta in self._llm.respond(self._conversation.prompt(), tools=[]):
-            if delta.tool_name:
-                # Local execution is the device's job, always (plan section 5).
-                await self._send(
-                    ToolCall(id=str(uuid.uuid4()), name=delta.tool_name, args=delta.tool_args or {})
+        # Uma rodada por chamada de ferramenta: o modelo pede, o dispositivo
+        # executa, o resultado volta para o histórico e o modelo continua. Sem
+        # este laço a chamada saía pelo fio e ninguém esperava a resposta -- que
+        # era o estado do código até aqui.
+        for rodada in range(MAX_TOOL_ROUNDS + 1):
+            chamada: tuple[str, dict] | None = None
+
+            async for delta in self._llm.respond(
+                self._conversation.prompt(), tools=DEVICE_TOOLS
+            ):
+                if delta.tool_name:
+                    # A execução é sempre do dispositivo (plano, seção 5, regra 3).
+                    chamada = (delta.tool_name, delta.tool_args or {})
+                    break
+                if not delta.text:
+                    continue
+
+                if first_token:
+                    turn.mark("llm_first_token")
+                    first_token = False
+
+                pending += delta.text
+                full += delta.text
+                if pending[-1] in BREAKS:
+                    await flush(pending)
+                    pending = ""
+
+            if chamada is None:
+                break
+
+            nome, args = chamada
+            if rodada == MAX_TOOL_ROUNDS:
+                log.warning("modelo insistiu em ferramenta apos %d rodadas", rodada)
+                self._conversation.add_tool_result(
+                    nome, "falhou: numero maximo de tentativas atingido"
                 )
-                continue
-            if not delta.text:
-                continue
+                break
 
-            if first_token:
-                turn.mark("llm_first_token")
-                first_token = False
+            resultado = await self._run_device_tool(nome, args)
+            turn.mark(f"ferramenta:{nome}")
 
-            pending += delta.text
-            full += delta.text
-            if pending[-1] in BREAKS:
-                await flush(pending)
-                pending = ""
+            if nome in TERMINAL_TOOLS:
+                # O dispositivo já devolveu a frase pronta. Ela vai como está: o
+                # modelo reescrevendo isso perde item da lista, e a rodada extra
+                # custa segundos num turno que já é o mais lento que existe.
+                await flush(resultado)
+                full += resultado
+                break
+
+            self._conversation.add_tool_result(nome, resultado)
 
         await flush(pending)
 
@@ -181,6 +225,50 @@ class Session:
             await self._send(Transcript(text=full.strip(), role="assistant", final=True))
         turn.mark("resposta")
         return full.strip()
+
+    async def _run_device_tool(self, name: str, args: dict) -> str:
+        """Pede ao dispositivo que execute, e espera o resultado.
+
+        O gateway não sabe criar um timer e não deve saber: quem tem o
+        agendador, o banco e o alto-falante é o outro lado. Aqui só transita.
+        """
+        call_id = str(uuid.uuid4())
+        log.info("ferramenta %s %s -> dispositivo", name, args)
+        await self._send(ToolCall(id=call_id, name=name, args=args))
+        try:
+            result = await asyncio.wait_for(
+                self._receive_tool_result(call_id), timeout=TOOL_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            log.warning("dispositivo nao respondeu a ferramenta %s", name)
+            return "falhou: o aparelho nao respondeu"
+
+        if not result.ok:
+            return f"falhou: {result.error or 'erro desconhecido'}"
+        return result.value or "feito"
+
+    async def _receive_tool_result(self, call_id: str) -> ToolResult:
+        """Espera o `tool_result` daquela chamada, ignorando o resto.
+
+        Casar pelo `id` importa: sem isso, o resultado de uma chamada antiga --
+        uma que estourou o tempo e chegou atrasada -- seria lido como resposta
+        da chamada atual.
+        """
+        while True:
+            packet = await self._ws.receive()
+            if packet.get("type") == "websocket.disconnect":
+                raise WebSocketDisconnect(packet.get("code", 1000))
+            raw = packet.get("text")
+            if raw is None:
+                continue
+            try:
+                message = decode(raw)
+            except ValueError as exc:
+                await self._send(Error(message=str(exc)))
+                continue
+            if isinstance(message, ToolResult) and message.id == call_id:
+                return message
+            log.debug("ignoring %s while waiting for tool_result", getattr(message, "type", "?"))
 
     async def _send(self, message: object) -> None:
         await self._ws.send_text(encode(message))

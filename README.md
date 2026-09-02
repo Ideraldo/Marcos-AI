@@ -144,6 +144,40 @@ Still missing from this phase, on purpose: embedding similarity for paraphrases
 (waiting on a real level-2 log to say which paraphrases people actually use),
 and volume control (OS mixer, platform-specific).
 
+## Phase 3 -- tools (in progress)
+
+Goal: tools on the gateway. Accepted when the LLM calls the right ones and does
+not invent calls that do not exist.
+
+**Done: the tools that run back on the device.** The gateway declares
+`criar_timer`, `criar_alarme`, `listar_agendamentos` and `cancelar_agendamento`,
+but executes none of them -- it carries the call to the device and waits for the
+result. Execution lands in the same `device/local/` code the regex router
+already used, so a sentence understood by the regex and one understood only by
+the LLM end up identical (D18).
+
+```
+voce> me lembra de tirar o bolo quando der uma hora e meia
+  [ferramenta criar_timer {'segundos': '5400'}]
+marcos> Timer de 1 hora e meia.
+```
+
+A device tool's result **is** the answer: it is spoken as returned, with no
+second LLM round. That started as a latency win (3.7s -> 2.1s) and turned out to
+be a correctness fix -- asked to list two schedules, the model rewrote the list
+and dropped one.
+
+**Open, and it is a model problem, not a code one.** With tools declared,
+llama3.1:8b stops answering general knowledge -- same prompt, same question,
+"Não sei" with tools and "Canberra" without. Measured over ten sentences: 4/5
+correct tool calls, 0 invented calls, and 0/5 general questions answered. Three
+alternatives were measured and all were worse (D19). The fix is a different
+model behind the same `LLMProvider` interface, which is exactly what plan
+section 6 always said.
+
+Next in this phase: Spotify, then web search. Home Assistant is out of scope --
+one smart bulb does not justify Tailscale and phase 5.
+
 ## Choosing STT and TTS
 
 `lab/` is where engines are measured before becoming an implementation under
@@ -172,8 +206,8 @@ in `docs/voz-e-locutor.md`:
 **Phase 1's container is written but never executed** (D15), and its first real
 run will be on the VPS (D16). Nothing else waits on it.
 
-**Phase 3 -- tools on the gateway**: web search, Spotify, Home Assistant. Or
-Phase 4, the face. Neither depends on hardware.
+**Deciding which model runs the level-2 path.** The 8B cannot hold tools and
+general knowledge at once (D19); everything else in phase 3 sits behind that.
 
 **Then: portable translator mode.** Speak Portuguese, have the device speak
 English or Chinese, and the reverse. Two of the three pieces already exist --

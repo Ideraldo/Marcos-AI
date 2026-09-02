@@ -500,3 +500,114 @@ frases de exemplo por adivinhação seria treinar contra um usuário imaginário
 foi implementado. Ele depende do mixer do sistema operacional, que é
 código específico de plataforma e não se testa na mesa do jeito que o resto se
 testou.
+
+---
+
+## D18 — Ferramentas do dispositivo: o LLM pede, o Pi executa, e o resultado é a resposta
+
+**Data:** 2026-09-01
+**O plano diz:** a seção 4, linha 149: *"quando o LLM interpreta 'me acorda às 7',
+quem grava e dispara é o Pi, não o gateway"*. A Fase 3 entrega ferramentas no
+gateway, aceita quando *"o LLM chama as ferramentas certas e não inventa chamadas
+inexistentes"*.
+
+**O que mudou:** `gateway/tools/device_tools.py` declara quatro ferramentas —
+`criar_timer`, `criar_alarme`, `listar_agendamentos`, `cancelar_agendamento` —
+que o gateway **não executa**. Ele transporta a chamada até o dispositivo, espera
+o `tool_result` e segue. A execução acontece em `device/local/`, o mesmo código
+que o roteador de regex já usava antes de existir LLM no caminho.
+
+Até aqui o gateway mandava `tool_call` pelo fio e ninguém esperava resposta; do
+outro lado, o dispositivo respondia `not implemented` a tudo.
+
+**Por quê:** é a regra 3 da seção 5 (a execução é sempre local) encontrando a
+Fase 2. Uma frase que o regex reconhece e uma que só o LLM entende terminam no
+**mesmo** `LocalServices`, com os mesmos slots. Se divergissem, o aparelho teria
+dois comportamentos para a mesma frase, dependendo de a internet estar de pé.
+
+**Ferramentas terminais.** O resultado do dispositivo já é uma frase redigida
+para ser falada, e ela vai ao ar como está — sem uma segunda rodada de LLM.
+Começou como economia de latência e virou correção: perguntando *"o que eu tenho
+marcado"* com um timer e um alarme na fila, o modelo recebeu os dois e respondeu
+só o alarme. Resumir uma lista é perder item. Tentar consertar pelo prompt
+("repita sem omitir") saiu pior — o modelo passou a narrar que ia chamar a
+ferramenta em vez de responder.
+
+| Turno | Com 2ª rodada de LLM | Com ferramenta terminal |
+|---|---|---|
+| `listar_agendamentos` | 3,7 s, lista incompleta | **2,1 s**, lista completa |
+| `criar_alarme` | 4,1 s | **2,3 s** |
+
+**Consequências:**
+- `ToolResult` ganhou `value`: nem toda ferramenta é só "deu certo", e `listar`
+  precisa devolver conteúdo. Continua sendo texto — o gateway não conhece as
+  estruturas do dispositivo e não deve conhecer.
+- Argumentos são convertidos com tolerância no dispositivo. Não é zelo
+  gratuito: o llama3.1:8b mandou `{"segundos": "5400"}`, string, com o schema
+  dizendo `integer`. Recusar isso seria recusar uma chamada correta.
+- Ferramenta inventada volta como falha explícita, nunca como traceback — é
+  metade do critério de aceite da fase.
+- `MAX_TOOL_ROUNDS = 3`: um modelo pequeno que erra os argumentos repete a mesma
+  chamada para sempre, e sem teto o turno nunca termina, com o aparelho parado
+  em THINKING.
+
+**O critério de aceite está cumprido pela metade, e a metade que falta é do
+modelo, não do código.** Ver [D19](#d19--o-llama-318b-nao-faz-as-duas-coisas).
+
+---
+
+## D19 — O llama3.1:8b não faz as duas coisas
+
+**Data:** 2026-09-01
+**O plano diz:** a seção 6 já previa isto — *"modelo pequeno **classifica**,
+modelo grande **responde**"* — e a [D11](#d11) escolheu um modelo aberto local
+deixando em aberto se um 8B dá conta.
+
+**O que foi medido:** com as quatro ferramentas declaradas, o llama3.1:8b passa
+a recusar conhecimento geral. Mesma pergunta, mesmo prompt de sistema, a única
+diferença sendo a presença das ferramentas na chamada:
+
+| | "qual a capital da Austrália" |
+|---|---|
+| **Com** ferramentas | "Não sei a resposta para essa pergunta." |
+| **Sem** ferramentas | "A capital da Austrália é Canberra." |
+
+Repetido sobre dez frases, cinco de agenda e cinco de conhecimento geral:
+
+| | Resultado |
+|---|---|
+| Chamou a ferramenta certa | 4 de 5 |
+| Inventou chamada inexistente | 0 de 5 |
+| Respondeu conhecimento geral | **0 de 5** — as cinco viraram "não sei" |
+
+**Três variantes testadas, todas piores:**
+
+1. **Tirar a instrução "se não souber, diga que não sabe".** O modelo passou a
+   **inventar ferramenta**: cuspiu `{"name": "pesquisar", "parameters": {...}}`
+   como texto — uma ferramenta que não existe — e chamou `criar_timer` para
+   *"quem escreveu Dom Casmurro"*. É literalmente o modo de falha que o critério
+   de aceite da Fase 3 nomeia.
+2. **Instruir no prompt que ferramentas servem só para timer e alarme.** Sem
+   efeito: as recusas continuaram.
+3. **Separar em duas chamadas** (uma decide, outra responde), que é a arquitetura
+   da seção 6 com um modelo só. Ficou muito pior — com prompt de decisão, o
+   modelo chama ferramenta para tudo: *"qual a capital da Austrália"* virou
+   `criar_alarme(hora=0, minuto=0)`.
+
+**O que fica:** a variante atual, que é a melhor das quatro medidas — ferramentas
+funcionando, nada inventado, conhecimento geral perdido.
+
+**Um portão por palavra-chave foi considerado e não implementado.** Abrir as
+ferramentas só quando a frase menciona timer/alarme/acorda/lembra restaura a
+maior parte do conhecimento geral, mas erra nos dois sentidos: fecha em
+*"desmarca o que eu agendei"* (perde a intenção) e **abre** em *"me conta uma
+piada"*, por causa do "conta" — e ferramenta aberta numa frase dessas é um timer
+falso sendo criado. Trocar uma regressão total por uma silenciosa não é troca boa
+o bastante para ser feita sem decidir.
+
+**A decisão que isto força:** a D11 deixou em aberto *"se um modelo aberto de 8B
+dá conta de busca fundamentada"*. A resposta chegou antes da busca existir, e por
+um caminho que ninguém esperava: **ele não dá conta de ter ferramentas e
+conhecimento ao mesmo tempo.** As saídas são um modelo maior, um modelo melhor em
+ferramentas, ou o modelo de nuvem que a seção 6 sempre apontou — todas atrás da
+mesma interface `LLMProvider`, que é o ponto de troca e continua intacto.

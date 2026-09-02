@@ -59,12 +59,25 @@ class LocalServices:
     # -- ações -------------------------------------------------------------
 
     def criar_timer(self, slots: dict) -> str:
-        segundos = slots["segundos"]
+        segundos = int(slots["segundos"])
+        if segundos <= 0:
+            raise ValueError("duracao tem que ser positiva")
         self._store.add("timer", fire_at=time.time() + segundos, label=None)
         self.on_change()
-        return f"Timer de {_duracao_por_extenso(slots['quantidade'], slots['unidade'])}."
+        # O regex já sabe a unidade que a pessoa falou ("dez minutos") e a
+        # preserva; o LLM manda só `segundos`, e aí a unidade é deduzida. As
+        # duas entradas terminam na mesma frase falada.
+        if "quantidade" in slots and "unidade" in slots:
+            duracao = _duracao_por_extenso(slots["quantidade"], slots["unidade"])
+        else:
+            duracao = _segundos_por_extenso(segundos)
+        return f"Timer de {duracao}."
 
     def criar_alarme(self, slots: dict) -> str:
+        hora, minuto = int(slots["hora"]), int(slots.get("minuto", 0))
+        if not (0 <= hora <= 23 and 0 <= minuto <= 59):
+            raise ValueError(f"horario invalido: {hora}:{minuto}")
+        slots = {"hora": hora, "minuto": minuto}
         alvo = _proxima_ocorrencia(slots["hora"], slots["minuto"])
         self._store.add("alarme", fire_at=alvo.timestamp(), label=None)
         self.on_change()
@@ -90,9 +103,12 @@ class LocalServices:
         if not pendentes:
             return "Nao tem nada marcado."
         partes = [_descrever(item) for item in pendentes]
+        # "Voce tem" na frente porque esta frase vai ao ar como está: desde que
+        # as ferramentas terminais existem, o LLM não a reescreve mais, e uma
+        # lista solta ("um timer com 5 minutos restantes.") soa truncada.
         if len(partes) == 1:
-            return partes[0] + "."
-        return ", ".join(partes[:-1]) + f" e {partes[-1]}."
+            return f"Voce tem {partes[0]}."
+        return "Voce tem " + ", ".join(partes[:-1]) + f" e {partes[-1]}."
 
     def que_horas(self, slots: dict) -> str:
         agora = datetime.now()
@@ -117,6 +133,27 @@ class LocalServices:
 def _duracao_por_extenso(quantidade: int, unidade: str) -> str:
     plural = "s" if quantidade != 1 else ""
     return f"{quantidade} {unidade}{plural}"
+
+
+def _segundos_por_extenso(segundos: int) -> str:
+    """A duração dita como se fala, a partir de segundos crus.
+
+    O LLM manda 5400; ninguém diz "timer de cinco mil e quatrocentos segundos".
+    """
+    if segundos % 3600 == 0:
+        horas = segundos // 3600
+        return f"{horas} hora" + ("s" if horas != 1 else "")
+    if segundos >= 3600:
+        horas, resto = divmod(segundos, 3600)
+        minutos = resto // 60
+        plural = "s" if horas != 1 else ""
+        if minutos == 30:
+            return f"{horas} hora{plural} e meia"
+        return f"{horas} hora{plural} e {minutos} minutos"
+    if segundos % 60 == 0:
+        minutos = segundos // 60
+        return f"{minutos} minuto" + ("s" if minutos != 1 else "")
+    return f"{segundos} segundo" + ("s" if segundos != 1 else "")
 
 
 def _hora_por_extenso(hora: int, minuto: int) -> str:

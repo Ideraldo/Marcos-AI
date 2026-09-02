@@ -13,7 +13,10 @@ from gateway.llm.base import Message
 SYSTEM_PROMPT = (
     "Voce e o Marcos, um assistente de voz pessoal que responde em portugues do Brasil. "
     "Suas respostas sao lidas em voz alta, entao seja curto e direto: uma ou duas "
-    "frases, sem listas, sem markdown, sem emoji. Se nao souber, diga que nao sabe."
+    "frases, sem listas, sem markdown, sem emoji. Se nao souber, diga que nao sabe. "
+    "Timers e alarmes sao executados pelo proprio aparelho, pelas ferramentas: "
+    "chame a ferramenta e depois confirme em uma frase curta o que foi feito. "
+    "Nunca diga que marcou algo sem ter chamado a ferramenta."
 )
 
 
@@ -30,6 +33,17 @@ class Conversation:
 
     def add_assistant(self, text: str) -> None:
         self._turns.append(Message(role="assistant", content=text))
+        self._trim()
+
+    def add_tool_result(self, name: str, result: str) -> None:
+        """O que a ferramenta devolveu, para o modelo formular a resposta.
+
+        Entra como papel `tool` e não como `user`: o modelo precisa saber que
+        isto é resultado de uma ação que ele pediu, não uma coisa nova que a
+        pessoa disse. Confundir os dois faz o modelo responder ao resultado como
+        se fosse uma pergunta.
+        """
+        self._turns.append(Message(role="tool", content=f"{name}: {result}"))
         self._trim()
 
     def prompt(self) -> list[Message]:
