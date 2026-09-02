@@ -43,6 +43,8 @@ class FakeSpotify:
         self.tokens_emitidos = 0
         #: corpo do ultimo PUT /play, para conferir COMO mandamos tocar
         self.corpo_play: dict = {}
+        #: ultimo `q` mandado ao /search, para conferir o que foi procurado
+        self.ultima_busca: str | None = None
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -61,6 +63,7 @@ class FakeSpotify:
         if path.endswith("/me/player/devices"):
             return httpx.Response(200, json={"devices": self.devices})
         if path.endswith("/search"):
+            self.ultima_busca = request.url.params.get("q")
             return httpx.Response(200, json={"tracks": {"items": self.busca}})
         if path.endswith("/currently-playing"):
             if self.tocando is None:
@@ -170,6 +173,138 @@ class TestTocar:
         api, client = fake
         api.devices = [{"id": "a", "is_active": False}, {"id": "b", "is_active": False}]
         assert await client._device_id() == "a"
+
+
+class TestEscolhaDeAparelho:
+    """Onde tocar quando ninguem diz onde -- e o que faz o Marcos ser a caixa de
+    som em vez de um controle remoto do PC."""
+
+    @pytest.mark.asyncio
+    async def test_preferido_ganha_do_ativo(self, fake):
+        api, client = fake
+        api.devices = [
+            {"id": "pc", "is_active": True, "name": "RUIPC"},
+            {"id": "pi", "is_active": False, "name": "Marcos"},
+        ]
+        client._preferido = "Marcos"
+        assert await client._device_id() == "pi"
+
+    @pytest.mark.asyncio
+    async def test_sem_o_preferido_na_lista_cai_para_o_ativo(self, fake):
+        # O caso de hoje: a Pi ainda nao existe. O comportamento tem que ser o
+        # de antes, e nao um erro.
+        api, client = fake
+        api.devices = [
+            {"id": "pc", "is_active": False, "name": "RUIPC"},
+            {"id": "echo", "is_active": True, "name": "Echo Dot de Ideraldo"},
+        ]
+        client._preferido = "Marcos"
+        assert await client._device_id() == "echo"
+
+    @pytest.mark.asyncio
+    async def test_o_que_a_pessoa_pediu_ganha_do_preferido(self, fake):
+        api, client = fake
+        api.devices = [
+            {"id": "pi", "is_active": True, "name": "Marcos"},
+            {"id": "echo", "is_active": False, "name": "Echo Dot de Ideraldo"},
+        ]
+        client._preferido = "Marcos"
+        assert await client._device_id("echo dot") == "echo"
+
+    @pytest.mark.asyncio
+    async def test_casa_por_trecho_e_sem_acento(self, fake):
+        api, client = fake
+        api.devices = [{"id": "sala", "is_active": False, "name": "Caixa da Sala"}]
+        assert await client._device_id("sala") == "sala"
+        assert await client._device_id("CAIXA") == "sala"
+
+    @pytest.mark.asyncio
+    async def test_nome_exato_ganha_de_trecho(self, fake):
+        api, client = fake
+        api.devices = [
+            {"id": "quarto", "is_active": False, "name": "Marcos (quarto)"},
+            {"id": "pi", "is_active": False, "name": "Marcos"},
+        ]
+        assert await client._device_id("Marcos") == "pi"
+
+    @pytest.mark.asyncio
+    async def test_aparelho_inexistente_diz_quais_existem(self, fake):
+        api, client = fake
+        api.devices = [{"id": "pc", "is_active": True, "name": "RUIPC"}]
+        with pytest.raises(SpotifyError, match="RUIPC"):
+            await client._device_id("geladeira")
+
+    @pytest.mark.asyncio
+    async def test_tocar_no_aparelho_pedido(self, fake):
+        api, client = fake
+        api.devices = [
+            {"id": "pi", "is_active": True, "name": "Marcos"},
+            {"id": "echo", "is_active": False, "name": "Echo Dot de Ideraldo"},
+        ]
+        await executar_spotify(client, "tocar_musica", {"busca": "x", "aparelho": "echo"})
+        assert ("PUT", "/v1/me/player/play") in api.chamadas
+
+
+class TestQuandoOModeloConfundeOsCampos:
+    """`busca` e `aparelho` sao dois campos de texto livre lado a lado, e o
+    modelo divide errado: "toca Construcao do Chico Buarque" virou
+    {busca: "Construcao", aparelho: "Chico Buarque"} -- e tocou a musica errada.
+    """
+
+    @pytest.mark.asyncio
+    async def test_aparelho_que_nao_existe_volta_para_a_busca(self, fake):
+        api, client = fake
+        api.devices = [{"id": "pc", "is_active": True, "name": "RUIPC"}]
+        await client.tocar("Construcao", aparelho="Chico Buarque")
+        busca = [c for c in api.chamadas if c[1].endswith("/search")]
+        assert busca, "deveria ter buscado"
+        # a busca precisa ter recebido as duas partes
+        assert api.ultima_busca == "Construcao Chico Buarque"
+
+    @pytest.mark.asyncio
+    async def test_nao_duplica_o_que_ja_estava_na_busca(self, fake):
+        api, client = fake
+        api.devices = [{"id": "pc", "is_active": True, "name": "RUIPC"}]
+        await client.tocar("Construcao Chico Buarque", aparelho="chico buarque")
+        assert api.ultima_busca == "Construcao Chico Buarque"
+
+    @pytest.mark.asyncio
+    async def test_aparelho_de_verdade_continua_valendo(self, fake):
+        api, client = fake
+        api.devices = [
+            {"id": "pc", "is_active": True, "name": "RUIPC"},
+            {"id": "echo", "is_active": False, "name": "Echo Dot de Ideraldo"},
+        ]
+        await client.tocar("Construcao", aparelho="echo")
+        assert api.ultima_busca == "Construcao"
+
+
+class TestTrocarDeAparelho:
+    @pytest.mark.asyncio
+    async def test_transfere_tocando(self, fake):
+        api, client = fake
+        api.devices = [
+            {"id": "pc", "is_active": True, "name": "RUIPC"},
+            {"id": "echo", "is_active": False, "name": "Echo Dot de Ideraldo"},
+        ]
+        assert "Echo Dot" in await client.trocar_aparelho("echo")
+        assert ("PUT", "/v1/me/player") in api.chamadas
+
+    @pytest.mark.asyncio
+    async def test_sem_dizer_para_onde(self, fake):
+        _, client = fake
+        assert "falhou" in await executar_spotify(client, "trocar_aparelho", {})
+
+    @pytest.mark.asyncio
+    async def test_listar_marca_o_que_esta_tocando(self, fake):
+        api, client = fake
+        api.devices = [
+            {"id": "pc", "is_active": True, "name": "RUIPC"},
+            {"id": "echo", "is_active": False, "name": "Echo Dot"},
+        ]
+        resposta = await client.listar_aparelhos()
+        assert "RUIPC (tocando agora)" in resposta
+        assert "Echo Dot" in resposta
 
 
 class TestTocandoAgora:

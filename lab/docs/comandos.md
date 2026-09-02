@@ -384,6 +384,7 @@ Variáveis relevantes em `.env`:
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | sem elas, as ferramentas de musica nao existem (D21) |
 | `SPOTIFY_REDIRECT_URI` | tem que bater com o dashboard; `127.0.0.1`, nunca `localhost` |
 | `SPOTIFY_TOKEN_PATH` / `SPOTIFY_MARKET` | onde o refresh token fica, e o pais da busca |
+| `SPOTIFY_DEVICE` | onde tocar quando ninguem disser onde; aponta para a Pi (D23) |
 
 > **Não rode o Ollama enquanto o fine-tune treina.** Os dois disputam a mesma
 > placa e o treino morre com `CUDA out of memory` — aconteceu. `ollama stop

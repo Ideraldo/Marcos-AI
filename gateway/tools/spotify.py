@@ -20,6 +20,7 @@ import base64
 import json
 import logging
 import time
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,30 @@ SCOPES = "user-read-playback-state user-modify-playback-state"
 
 class SpotifyError(Exception):
     """Falha que o usuário precisa ouvir, já em português."""
+
+
+def _sem_acento(texto: str) -> str:
+    texto = unicodedata.normalize("NFD", texto.lower())
+    return "".join(c for c in texto if unicodedata.category(c) != "Mn").strip()
+
+
+def _casar_aparelho(devices: list[dict], nome: str) -> dict | None:
+    """Acha o aparelho pelo nome, do jeito que alguém falaria.
+
+    Ninguém diz "Echo Dot de Ideraldo" inteiro: diz "echo", "echo dot", "a
+    caixinha". Casamento é por trecho e sem acento, com o nome exato primeiro
+    para "Marcos" não perder para "Marcos (quarto)" se os dois existirem.
+    """
+    alvo = _sem_acento(nome)
+    if not alvo:
+        return None
+    for d in devices:
+        if _sem_acento(d.get("name", "")) == alvo:
+            return d
+    for d in devices:
+        if alvo in _sem_acento(d.get("name", "")):
+            return d
+    return None
 
 
 def _erro_403(r: httpx.Response) -> SpotifyError:
@@ -80,12 +105,18 @@ class SpotifyClient:
         token_path: str | Path,
         market: str = "BR",
         timeout: float = 10.0,
+        preferido: str | None = None,
     ) -> None:
         self._id = client_id
         self._secret = client_secret
         self._token_path = Path(token_path)
         self._market = market
         self._timeout = timeout
+        # O nome do aparelho onde tocar quando ninguém disser onde. A ideia é
+        # que seja a própria Pi, rodando raspotify/librespot: aí "toca Chico
+        # Buarque" sai no alto-falante do Marcos, como sairia numa Alexa, em vez
+        # de num PC que pode estar em outro cômodo.
+        self._preferido = preferido or None
         self._access: str | None = None
         self._expires_at = 0.0
 
@@ -157,20 +188,89 @@ class SpotifyClient:
             raise SpotifyError(f"o Spotify respondeu {r.status_code}")
         return r
 
-    async def _device_id(self) -> str | None:
-        """Onde tocar. Prefere o que já está ativo; senão, o primeiro da lista.
-
-        Sem isto, mandar tocar com o Spotify fechado em todo lugar devolve 404 e
-        nada acontece -- que é o comportamento mais comum na vida real.
-        """
+    async def aparelhos(self) -> list[dict]:
         r = await self._call("GET", "/me/player/devices")
         devices = r.json().get("devices", [])
         if not devices:
+            # Sem isto, mandar tocar com o Spotify fechado em todo lugar devolve
+            # 404 e nada acontece -- o caso mais comum da vida real.
             raise SpotifyError("abra o Spotify em algum aparelho primeiro")
+        return devices
+
+    async def _existe_aparelho(self, nome: str) -> bool:
+        try:
+            return _casar_aparelho(await self.aparelhos(), nome) is not None
+        except SpotifyError:
+            # Sem nenhum aparelho aberto não dá para afirmar que o nome é
+            # inválido; deixa o fluxo normal levantar o erro certo depois.
+            return True
+
+    async def _device_id(self, nome: str | None = None) -> str | None:
+        """Onde tocar, em ordem de preferência.
+
+        1. O aparelho que a pessoa nomeou na frase, se ela nomeou.
+        2. O **preferido** da configuração -- a ideia é que seja a própria Pi.
+        3. O que já está ativo.
+        4. O primeiro da lista.
+
+        A ordem tem uma consequência de projeto: com a Pi na lista, "toca Chico
+        Buarque" sai nela por padrão, e é isso que faz o aparelho ser uma caixa
+        de som em vez de um controle remoto do PC. Enquanto a Pi não existe, o
+        item 2 não casa e o comportamento é o de antes.
+        """
+        devices = await self.aparelhos()
+
+        if nome:
+            achado = _casar_aparelho(devices, nome)
+            if achado is None:
+                nomes = ", ".join(d.get("name", "?") for d in devices)
+                raise SpotifyError(f"nao achei o aparelho {nome}. Tem: {nomes}")
+            return achado.get("id")
+
+        if self._preferido:
+            achado = _casar_aparelho(devices, self._preferido)
+            if achado is not None:
+                return achado.get("id")
+
         ativo = next((d for d in devices if d.get("is_active")), None)
         return (ativo or devices[0]).get("id")
 
-    async def tocar(self, busca: str) -> str:
+    async def listar_aparelhos(self) -> str:
+        devices = await self.aparelhos()
+        partes = []
+        for d in devices:
+            nome = d.get("name", "sem nome")
+            partes.append(f"{nome} (tocando agora)" if d.get("is_active") else nome)
+        if len(partes) == 1:
+            return f"So o {partes[0]}."
+        return "Tem " + ", ".join(partes[:-1]) + f" e {partes[-1]}."
+
+    async def trocar_aparelho(self, nome: str) -> str:
+        """Passa o que está tocando para outro aparelho, sem parar a música."""
+        devices = await self.aparelhos()
+        alvo = _casar_aparelho(devices, nome)
+        if alvo is None:
+            nomes = ", ".join(d.get("name", "?") for d in devices)
+            raise SpotifyError(f"nao achei o aparelho {nome}. Tem: {nomes}")
+        # `play: true` continua tocando do ponto em que estava, em vez de
+        # transferir pausado -- que é o que a pessoa quer ao dizer "passa pro X".
+        await self._call(
+            "PUT", "/me/player", json={"device_ids": [alvo.get("id")], "play": True}
+        )
+        return f"Passando para {alvo.get('name')}."
+
+    async def tocar(self, busca: str, aparelho: str | None = None) -> str:
+        # O modelo confunde os dois campos de texto: pedindo "toca Construção do
+        # Chico Buarque" ele mandou {busca: "Construcao", aparelho: "Chico
+        # Buarque"}, e o aparelho tocou outra música do disco errado. Se o que
+        # veio em `aparelho` não é um aparelho, ele era parte do pedido -- e
+        # devolver a busca inteira é melhor que errar a música ou recusar.
+        if aparelho and not await self._existe_aparelho(aparelho):
+            log.info("%r nao e aparelho; tratando como parte da busca", aparelho)
+            if _sem_acento(aparelho) not in _sem_acento(busca):
+                busca = f"{busca} {aparelho}".strip()
+            aparelho = None
+
         r = await self._call(
             "GET", "/search", params={"q": busca, "type": "track", "limit": 1, "market": self._market}
         )
@@ -179,7 +279,7 @@ class SpotifyClient:
             return f"Nao achei nada no Spotify para {busca}."
 
         faixa = itens[0]
-        device = await self._device_id()
+        device = await self._device_id(aparelho)
 
         # Tocar no contexto do álbum, e não a faixa solta. Com `uris` a fila
         # tem exatamente um item: a música toca, e o primeiro "próxima" acaba
@@ -244,7 +344,15 @@ SPOTIFY_TOOLS: list[Tool] = [
                 "busca": {
                     "type": "string",
                     "description": "O que procurar: nome da musica, do artista, ou os dois.",
-                }
+                },
+                "aparelho": {
+                    "type": "string",
+                    "description": (
+                        "Onde tocar, SO se a pessoa disser ('toca no echo dot'). "
+                        "Omita quando ela nao disser: o aparelho padrao e escolhido "
+                        "sozinho."
+                    ),
+                },
             },
             "required": ["busca"],
         },
@@ -279,6 +387,37 @@ SPOTIFY_TOOLS: list[Tool] = [
     ),
 ]
 
+SPOTIFY_TOOLS += [
+    Tool(
+        name="listar_aparelhos",
+        description=(
+            "Diz em quais aparelhos da pra tocar musica agora: celular, computador, "
+            "caixa de som. Use SEMPRE que perguntarem onde da pra tocar, quais "
+            "aparelhos existem, ou em que caixa de som da pra ouvir -- nunca "
+            "responda isso de cabeca, porque a lista muda o tempo todo."
+        ),
+        parameters={"type": "object", "properties": {}},
+    ),
+    Tool(
+        name="trocar_aparelho",
+        description=(
+            "Passa a musica que ja esta tocando para outro aparelho, sem parar. "
+            "Use para 'passa pro echo dot', 'joga no computador'. Para comecar "
+            "uma musica nova num aparelho, use tocar_musica com o campo aparelho."
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "aparelho": {
+                    "type": "string",
+                    "description": "Nome, ou parte do nome, do aparelho de destino.",
+                }
+            },
+            "required": ["aparelho"],
+        },
+    ),
+]
+
 #: Nome da ferramenta -> método do cliente. Explícito, e não `getattr`, para que
 #: um nome inventado pelo modelo não vire chamada de método arbitrário.
 SPOTIFY_DISPATCH: dict[str, str] = {
@@ -288,6 +427,8 @@ SPOTIFY_DISPATCH: dict[str, str] = {
     "proxima_musica": "proxima",
     "musica_anterior": "anterior",
     "musica_tocando": "tocando_agora",
+    "listar_aparelhos": "listar_aparelhos",
+    "trocar_aparelho": "trocar_aparelho",
 }
 
 
@@ -305,7 +446,13 @@ async def executar_spotify(client: SpotifyClient, name: str, args: dict) -> str:
             busca = str(args.get("busca") or "").strip()
             if not busca:
                 return "falhou: nao disseram o que tocar"
-            return await getattr(client, metodo)(busca)
+            aparelho = str(args.get("aparelho") or "").strip() or None
+            return await client.tocar(busca, aparelho)
+        if metodo == "trocar_aparelho":
+            aparelho = str(args.get("aparelho") or "").strip()
+            if not aparelho:
+                return "falhou: nao disseram para qual aparelho"
+            return await client.trocar_aparelho(aparelho)
         return await getattr(client, metodo)()
     except SpotifyError as exc:
         return str(exc).capitalize() + "."

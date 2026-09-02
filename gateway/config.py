@@ -31,6 +31,12 @@ class GatewayConfig:
     spotify_redirect_uri: str = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
     spotify_token_path: str = os.getenv("SPOTIFY_TOKEN_PATH", "gateway/data/spotify_token.json")
     spotify_market: str = os.getenv("SPOTIFY_MARKET", "BR")
+    # Onde tocar quando ninguem disser onde. O padrao aponta para a propria Pi
+    # rodando raspotify/librespot: e o que faz "toca Chico Buarque" sair no
+    # alto-falante do Marcos, como sairia numa Alexa, em vez de num PC que pode
+    # estar em outro comodo. Enquanto a Pi nao existe, o nome nao casa com nada
+    # e a escolha cai para o aparelho ativo, como antes.
+    spotify_device: str = os.getenv("SPOTIFY_DEVICE", "Marcos")
     stt_api_key: str | None = os.getenv("STT_API_KEY")
     tts_api_key: str | None = os.getenv("TTS_API_KEY")
 

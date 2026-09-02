@@ -836,3 +836,58 @@ era a correção.
   problema hoje (o corte é por número de turnos e o par é adjacente), mas é a
   primeira coisa a olhar se o modelo voltar a se comportar mal em conversa
   longa.
+
+---
+
+## D23 — A música toca no próprio aparelho por padrão
+
+**Data:** 2026-09-01
+**O plano diz:** a seção 12 alerta que *"o vilão é a música"* no consumo de dados
+e a seção 14 registra `librespot` como alternativa ao Spotify Connect. Não diz
+onde a música deve sair.
+
+**O que mudou:** `SPOTIFY_DEVICE` (padrão `Marcos`) nomeia o aparelho onde tocar
+quando ninguém disser onde. A escolha passa a ser, em ordem: o aparelho que a
+pessoa nomeou na frase → o preferido da configuração → o que está ativo → o
+primeiro da lista. Entraram duas ferramentas, `listar_aparelhos` e
+`trocar_aparelho`, e `tocar_musica` ganhou um campo `aparelho` opcional.
+
+**Por quê:** é a diferença entre o Marcos **ser** a caixa de som e ser um
+controle remoto do PC. A Alexa que ele substitui é, para o Spotify, apenas um
+Spotify Connect device — apareceu na lista da conta como `Echo Dot de Ideraldo`.
+Na Pi o equivalente é o **raspotify** (empacotamento do `librespot`), que se
+anuncia com o nome configurado e toca pela placa de som dela.
+
+**O que isto não exige:** nenhuma mudança na app do dashboard. O raspotify faz
+login com a conta diretamente e não usa a Web API; os escopos já autorizados
+(`user-read-playback-state`, `user-modify-playback-state`) bastam para listar
+aparelhos e transferir. O *Web Playback SDK* continua sem uso — ele serve para
+tocar dentro de um navegador.
+
+**Enquanto a Pi não existe**, o nome `Marcos` não casa com nada e a escolha cai
+para o aparelho ativo. Verificado com a conta real: preferido ausente → tocou no
+`RUIPC`; `"echo"` → `Echo Dot de Ideraldo`; `"geladeira"` → *"não achei o
+aparelho geladeira. Tem: RUIPC, Web Player (Chrome), Echo Dot de Ideraldo"*.
+
+**Um defeito de desenho de parâmetro, achado em uso.** `busca` e `aparelho` são
+dois campos de texto livre lado a lado, e o modelo divide errado:
+
+```
+"toca construcao do chico buarque"
+   -> tocar_musica {"busca": "Construcao", "aparelho": "Chico Buarque"}
+```
+
+O artista foi parar no campo do aparelho, a busca virou só "Construção", e tocou
+*Samba de Orly*. A correção não é confiar mais no modelo: antes de usar,
+`aparelho` é conferido contra a lista real, e **se não for um aparelho, volta
+para dentro da busca**. Recusar seria pior — a frase era perfeitamente
+compreensível.
+
+**O que fica para a Fase 6, junto com a Pi:**
+
+- Instalar o raspotify e nomear o aparelho `Marcos`.
+- **Ducking**: o `librespot` e o Piper disputam a mesma placa de som. Se o Marcos
+  precisa falar enquanto a música toca, alguém tem que abaixar a música. É o
+  mesmo problema do barge-in da Fase 7 (interromper o assistente falando), e
+  resolver os dois juntos é mais barato que separado.
+- O `librespot` exige Premium, que a conta já tem (verificado em D21).

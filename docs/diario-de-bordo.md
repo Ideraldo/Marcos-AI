@@ -1719,6 +1719,49 @@ uma explicação bonita e errada.**
 teste pegaria isso — todos os 158 passavam. O que pegou foi eu perguntar ao
 Spotify se ele estava tocando.*
 
+### E se tocasse no próprio Marcos?
+
+Perguntei se não dava para a música sair do próprio aparelho, como a Alexa faz.
+Dá — e a resposta estava na lista de aparelhos que eu já tinha visto: para o
+Spotify, a Alexa **é** um Connect device. Na Pi o equivalente é o `raspotify`,
+empacotamento do `librespot`, que se anuncia com o nome que você der.
+
+Então o padrão passou a ser `SPOTIFY_DEVICE=Marcos` ([D23](decisions.md)): pedir
+música sem dizer onde toca na Pi. Enquanto a Pi não existe, o nome não casa com
+nada e cai para o aparelho ativo — que é o comportamento de antes, e foi assim
+que ficou aqui.
+
+Não precisou mexer em nada no dashboard do Spotify, o que eu não esperava: o
+raspotify faz login com a conta direto, não usa a Web API, e os dois escopos que
+eu já tinha bastam para listar e transferir.
+
+**E aí apareceu o defeito mais interessante do dia.** Pedi *"toca construção do
+Chico Buarque"* e ele tocou **Samba de Orly**. Fui ver os argumentos:
+
+```
+tocar_musica {"busca": "Construcao", "aparelho": "Chico Buarque"}
+```
+
+O artista foi parar no campo do aparelho. A busca virou só "Construção" — que é
+nome de música de mais de um artista — e ele tocou outra coisa.
+
+Isso não é o modelo sendo burro: é **desenho de parâmetro ruim meu**. Dois campos
+de texto livre lado a lado, um deles opcional, convidam essa divisão errada. A
+correção não foi pedir com mais educação no prompt: antes de usar, o `aparelho` é
+conferido contra a lista real de aparelhos, e se não for um deles, **volta para
+dentro da busca**. Recusar seria pior — a frase era perfeitamente compreensível.
+
+```
+voce> toca construcao do chico buarque -> Tocando Construcao, de Chico Buarque.
+voce> quais aparelhos tem              -> Tem RUIPC (tocando agora), Web Player
+                                          (Chrome) e Echo Dot de Ideraldo.
+```
+
+Fica anotado para a Fase 6, junto com a Pi: instalar o raspotify, e resolver o
+**ducking** — o `librespot` e o Piper disputam a mesma placa de som, e se o Marcos
+precisa falar enquanto a música toca, alguém tem que abaixar. É o mesmo problema
+do barge-in da Fase 7, e sai mais barato resolver os dois de uma vez.
+
 ---
 
 ## Onde estamos agora
@@ -1754,6 +1797,7 @@ Fechado até aqui:
 | Nível 0 | regex + SQLite no dispositivo (D17) | o despertador não pode depender do Wi-Fi |
 | Ferramentas | agenda: declarada no gateway, executada no Pi (D18) | a execução é sempre local |
 | Spotify | declarado **e** executado no gateway (D21) | é onde mora o segredo |
+| Onde a música toca | `SPOTIFY_DEVICE`, padrão a própria Pi (D23) | ser a caixa de som, não o controle remoto |
 | Histórico | guarda `tool_call` + resultado (D22) | sem isso o modelo para de chamar ferramenta |
 | Home Assistant | fora de escopo (D21) | uma lâmpada não paga Tailscale + Fase 5 |
 | Resultado de ferramenta | vai ao ar sem 2ª rodada de LLM (D18) | o modelo perdia item ao resumir |

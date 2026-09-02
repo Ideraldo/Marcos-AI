@@ -49,6 +49,7 @@ def build_spotify() -> SpotifyClient | None:
         client_secret=config.spotify_client_secret,
         token_path=config.spotify_token_path,
         market=config.spotify_market,
+        preferido=config.spotify_device,
     )
     if not client.authorized:
         logging.warning(

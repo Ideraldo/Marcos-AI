@@ -227,6 +227,16 @@ voce> pula essa                         -> Proxima.
 voce> pausa a musica                    -> Pausado.
 ```
 
+**Where the music plays.** `SPOTIFY_DEVICE` (default `Marcos`) names the device
+to use when nobody says where. The order is: the device named in the sentence ->
+this preferred one -> whatever is already active -> the first in the list. It
+points at the Pi on purpose: with `raspotify` (a `librespot` package) announcing
+itself as "Marcos", asking for a song plays it on the assistant's own speaker
+rather than on a PC in another room -- which is the difference between being the
+speaker and being a remote control for one (D23). Until the Pi exists the name
+matches nothing and the fallback keeps today's behaviour. `listar_aparelhos` and
+`trocar_aparelho` cover "where can it play" and "move it to the echo dot".
+
 Home Assistant is out of scope -- one smart bulb does not justify Tailscale and
 phase 5.
 
