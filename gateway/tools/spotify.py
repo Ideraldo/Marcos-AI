@@ -42,6 +42,34 @@ class SpotifyError(Exception):
     """Falha que o usuário precisa ouvir, já em português."""
 
 
+def _erro_403(r: httpx.Response) -> SpotifyError:
+    """Traduz um 403, que no Spotify significa duas coisas muito diferentes.
+
+    Isto começou errado e foi corrigido pela primeira execução com conta real: eu
+    traduzia **todo** 403 como "precisa de Premium". Mas o Spotify também
+    responde 403 para um comando que é inválido no estado atual -- pausar o que
+    já está pausado, voltar quando não há faixa anterior --, com
+    `"Player command failed: Restriction violated"`. Dizer "compre Premium" a
+    quem tem Premium é pior que não dizer nada.
+    """
+    reason, message = "", ""
+    try:
+        erro = r.json().get("error", {})
+        reason = str(erro.get("reason") or "")
+        message = str(erro.get("message") or "")
+    except (ValueError, AttributeError):
+        pass
+
+    if reason == "PREMIUM_REQUIRED" or "premium" in message.lower():
+        return SpotifyError("o controle de musica precisa de Spotify Premium")
+    if "restriction violated" in message.lower():
+        # Não é erro do usuário nem do código: é o estado do player.
+        return SpotifyError("nao da pra fazer isso agora")
+    if reason == "NO_ACTIVE_DEVICE":
+        return SpotifyError("abra o Spotify em algum aparelho primeiro")
+    return SpotifyError(message or "o Spotify recusou o comando")
+
+
 class SpotifyClient:
     """Cliente mínimo: buscar, tocar, pausar, pular, e dizer o que toca."""
 
@@ -119,11 +147,12 @@ class SpotifyClient:
                 method, f"{API}{path}", headers={"Authorization": f"Bearer {token}"}, **kwargs
             )
         if r.status_code == 403:
-            # O modo de falha mais provável, e o mais confuso se não for
-            # traduzido: a API não diz "compre Premium", diz 403.
-            raise SpotifyError("o controle de musica precisa de Spotify Premium")
+            raise _erro_403(r)
         if r.status_code == 404:
             raise SpotifyError("nao encontrei nenhum aparelho tocando Spotify")
+        if r.status_code == 429:
+            # O Spotify limita por janela; insistir piora.
+            raise SpotifyError("o Spotify pediu para eu esperar um pouco")
         if r.status_code >= 400:
             raise SpotifyError(f"o Spotify respondeu {r.status_code}")
         return r
@@ -151,11 +180,23 @@ class SpotifyClient:
 
         faixa = itens[0]
         device = await self._device_id()
+
+        # Tocar no contexto do álbum, e não a faixa solta. Com `uris` a fila
+        # tem exatamente um item: a música toca, e o primeiro "próxima" acaba
+        # com ela em silêncio -- medido, e o aparelho ainda dizia "Próxima".
+        # Com `context_uri` + `offset`, pedir uma música começa nela e segue no
+        # álbum, que é o que qualquer assistente de voz faz.
+        album = (faixa.get("album") or {}).get("uri")
+        if album:
+            corpo = {"context_uri": album, "offset": {"uri": faixa["uri"]}}
+        else:
+            corpo = {"uris": [faixa["uri"]]}
+
         await self._call(
             "PUT",
             "/me/player/play",
             params={"device_id": device} if device else None,
-            json={"uris": [faixa["uri"]]},
+            json=corpo,
         )
         artistas = ", ".join(a["name"] for a in faixa.get("artists", []))
         return f"Tocando {faixa['name']}, de {artistas}."

@@ -223,15 +223,20 @@ class Session:
                 resultado = await self._run_device_tool(nome, args)
             turn.mark(f"ferramenta:{nome}")
 
+            # O par pedido/resultado vai para o histórico **sempre**, inclusive
+            # nas ferramentas terminais. Sem ele o modelo para de chamar
+            # ferramenta no turno seguinte e passa a narrar ações que não fez
+            # (D22).
+            self._conversation.add_tool_call(nome, args)
+            self._conversation.add_tool_result(nome, resultado)
+
             if nome in TERMINAL_TOOLS or nome in SPOTIFY_TOOL_NAMES:
-                # O dispositivo já devolveu a frase pronta. Ela vai como está: o
-                # modelo reescrevendo isso perde item da lista, e a rodada extra
-                # custa segundos num turno que já é o mais lento que existe.
+                # A frase devolvida já está pronta para ser falada. Ela vai como
+                # está: o modelo reescrevendo isso perde item da lista, e a
+                # rodada extra custa segundos num turno que já é o mais lento.
                 await flush(resultado)
                 full += resultado
                 break
-
-            self._conversation.add_tool_result(nome, resultado)
 
         await flush(pending)
 

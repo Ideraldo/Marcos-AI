@@ -1593,6 +1593,134 @@ sobre si mesmo vale mais que o plano novo que finge estar certo.*
 
 ---
 
+## Dia 7 — O Spotify com conta de verdade, e a mentira que eu quase deixei passar
+
+Criei o app no dashboard e autorizei. Anotando o que travou, porque vai travar
+de novo em quem seguir tutorial antigo:
+
+- O campo de Redirect URI mostra `https://example.org/callback` como **exemplo**,
+  não como valor. A mensagem "Please enter a valid redirect URI" era o campo
+  vazio, e faltava clicar em **Add** para virar item da lista.
+- `localhost` é recusado. Tem que ser `http://127.0.0.1:8888/callback`, com IP
+  explícito. Vale para apps criados depois de abril de 2025 — por isso quase todo
+  tutorial da internet está errado hoje.
+- Das APIs, só **Web API**. O Web Playback SDK é para tocar dentro do navegador.
+
+Primeira leitura contra a conta real, e uma ironia que eu não esperava:
+
+```
+aparelhos: [('RUIPC', 'Computer', False),
+            ('Web Player (Chrome)', 'Computer', False),
+            ('Echo Dot de Ideraldo', 'Speaker', False)]
+```
+
+**O Echo Dot que eu quero aposentar é um dos aparelhos que o Marcos pode
+comandar.** Vou usar isso no vídeo.
+
+### O 403 que significava outra coisa
+
+Mandei tocar. Funcionou. Mandei pausar:
+
+```
+pausar -> O controle de musica precisa de spotify premium.
+```
+
+Só que eu **tenho** Premium — tanto que o `tocar` funcionou, e conta grátis nem
+consegue chamar o `play`. Fui ver o corpo do erro:
+
+```
+PUT /pause -> 403 "Player command failed: Restriction violated"
+   is_playing: False
+   disallows: {'pausing': True, 'skipping_prev': True}
+```
+
+Era "pausar o que já está pausado". **O Spotify usa 403 para duas coisas
+completamente diferentes** — falta de Premium e comando inválido no estado atual
+— e eu traduzia todo 403 como "precisa de Premium". Dizer "compre Premium" a
+quem tem Premium é pior que não dizer nada ([D21](decisions.md) corrigido).
+
+E por que estava pausado? Porque eu mandava tocar a faixa avulsa (`uris` com um
+item só). A fila tinha exatamente uma música, o `proxima` chegou ao fim dela, e o
+som morreu — enquanto o aparelho dizia "Próxima." Trocado por tocar no contexto
+do **álbum**: pedir uma música começa nela e continua no disco, que é o que
+qualquer assistente de voz faz. Agora "pula essa" leva de *Construção* para
+*Cordão*.
+
+### A mentira
+
+Aí veio a parte que me incomodou de verdade. Pelo caminho de voz completo:
+
+```
+voce> pausa a musica
+marcos> Pausando a musica.
+```
+
+Fui conferir o player: `is_playing = True`. **Ele disse que pausou e não pausou.**
+
+Primeiro tentei consertar pelo prompt — a regra "nunca diga que marcou algo sem
+ter chamado a ferramenta" existia desde a D18, mas eu tinha escrito ela falando
+só de timer e alarme. Generalizei para toda ação. **Não mudou nada.**
+
+Então fui medir, isolando o histórico:
+
+| | chamou a ferramenta |
+|---|---|
+| Sem histórico nenhum | **6 de 6** |
+| Depois de uma troca anterior | **0 de 2** |
+
+Não era o modelo sendo fraco. Era a conversa. E a causa era minha, da D18: quando
+tornei as ferramentas terminais, parei de gravar `add_tool_result` — o histórico
+passou a guardar só isto:
+
+```
+user:      toca construcao do chico buarque
+assistant: Tocando Construcao, de Chico Buarque.
+```
+
+Nenhum vestígio de que existe ferramenta. O modelo relê, vê que ação virou prosa,
+e faz prosa. Testei três formatos de histórico com o mesmo pedido:
+
+| Histórico contém | Chamou |
+|---|---|
+| Só a frase falada (como estava) | **0 de 3** |
+| Só o papel `tool` com o resultado | 1 de 3 |
+| `tool_calls` + `tool` + a frase | **3 de 3** |
+
+Gravar o par pedido/resultado resolveu ([D22](decisions.md)). O turno completo,
+depois:
+
+```
+voce> toca construcao do chico buarque  -> Tocando Construcao, de Chico Buarque.
+voce> que musica e essa                 -> Construcao, de Chico Buarque.
+voce> pula essa                         -> Proxima.
+voce> pausa a musica                    -> Pausado.      (is_playing=False)
+voce> poe um timer de 10 minutos        -> [nivel 0, local]
+voce> o que eu tenho marcado            -> Voce tem um timer com 9 minutos restantes.
+```
+
+### O que eu levo daqui
+
+Três coisas, e as três são a mesma:
+
+O prompt não conserta o que o **exemplo** ensina. Eu escrevi "nunca diga que fez
+algo sem chamar a ferramenta" e o modelo continuou mentindo, porque a conversa
+inteira mostrava, turno após turno, que naquele lugar ação se responde com prosa.
+O exemplo dentro do contexto pesa mais que a instrução no topo.
+
+O bug estava numa decisão que eu tinha comemorado. A D18 (ferramentas terminais)
+ganhou latência e corrigiu uma lista incompleta — e, de quebra, quebrou o
+histórico de um jeito que só apareceu duas ferramentas depois.
+
+E de novo: eu ia escrever "o modelo pequeno não dá conta". Medi antes, e a
+resposta era 6/6 sem histórico. **A terceira vez no projeto em que medir salvou
+uma explicação bonita e errada.**
+
+*Lição para o vídeo: o assistente disse "pausando a música" e não pausou. Nenhum
+teste pegaria isso — todos os 158 passavam. O que pegou foi eu perguntar ao
+Spotify se ele estava tocando.*
+
+---
+
 ## Onde estamos agora
 
 **O Marcos me ouve, pensa, responde com a minha voz — e agora também resolve
@@ -1626,6 +1754,7 @@ Fechado até aqui:
 | Nível 0 | regex + SQLite no dispositivo (D17) | o despertador não pode depender do Wi-Fi |
 | Ferramentas | agenda: declarada no gateway, executada no Pi (D18) | a execução é sempre local |
 | Spotify | declarado **e** executado no gateway (D21) | é onde mora o segredo |
+| Histórico | guarda `tool_call` + resultado (D22) | sem isso o modelo para de chamar ferramenta |
 | Home Assistant | fora de escopo (D21) | uma lâmpada não paga Tailscale + Fase 5 |
 | Resultado de ferramenta | vai ao ar sem 2ª rodada de LLM (D18) | o modelo perdia item ao resumir |
 | Boot | sobe sem o gateway (D17) | senão o critério da Fase 2 é impossível |
@@ -1663,16 +1792,17 @@ O que sobra em aberto é **fundamentação**: o 8B alucina de vez em quando — 
 que Dom Casmurro é do Mario Quintana, uma vez em seis. É o argumento a favor da
 busca web.
 
-**Spotify escrito, não verificado.** Seis ferramentas de música, executadas no
-gateway porque é lá que mora o segredo (D21). Sem credenciais no `.env` elas
-nem são declaradas ao modelo, e o aparelho responde que não sabe tocar em vez de
-inventar chamada. Os vinte testes rodam contra HTTP falso: **não há conta do
-Spotify aqui**, então o formato real das respostas e o consentimento no
-navegador continuam sem prova.
+**Spotify funcionando com conta real.** Seis ferramentas de música, executadas
+no gateway porque é lá que mora o segredo (D21). Tocar, pular, pausar e "que
+música é essa" verificados contra a API, com `is_playing` conferido a cada passo.
+Sem credenciais no `.env` as ferramentas nem são declaradas, e o aparelho
+responde que não sabe tocar em vez de inventar chamada.
 
-Falta você criar o app no dashboard e rodar `python -m gateway.tools.spotify_auth`.
+A estreia com conta real achou três defeitos que o HTTP falso não pegaria: o 403
+que significa duas coisas, a fila de uma música só, e — o pior — o modelo dizendo
+ter pausado sem pausar (D22).
 
-Depois: **busca web**, que virou mais urgente do que era quando a ordem foi
+Próximo: **busca web**, que virou mais urgente do que era quando a ordem foi
 escolhida — é a resposta à alucinação do D20.
 
 Marco seguinte, planejado: **modo tradutor portátil.** Falar português e o
@@ -1689,8 +1819,6 @@ Em aberto:
 
 - **Se o container sobe** — só se descobre na VPS (D15, D16). Se aparecer
   qualquer máquina com Docker antes disso, rodar o build ali se paga.
-- **Se o Spotify funciona de verdade** — falta conta e o consentimento no
-  navegador (D21). O código está escrito e testado contra HTTP falso.
 - **Se tudo isso cabe na Pi** — nada foi medido lá ainda, nem o Whisper. O
   RTF do dispositivo já subiu de 0,43 para 0,6–0,9 só saindo da bancada para o
   código real. É a maior incerteza do projeto hoje.

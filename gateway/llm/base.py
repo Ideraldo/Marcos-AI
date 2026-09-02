@@ -10,6 +10,11 @@ from typing import Any, AsyncIterator, Protocol
 class Message:
     role: str  # "system" | "user" | "assistant" | "tool"
     content: str
+    #: Presente só na mensagem do assistente que **pediu** uma ferramenta.
+    #: Guardar isto no histórico não é enfeite: sem ele o modelo relê a conversa,
+    #: vê ações viraram prosa, e para de chamar ferramenta no turno seguinte.
+    #: Medido: com o registro completo, 3/3 chamadas; sem ele, 0/3 (D22).
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 @dataclass

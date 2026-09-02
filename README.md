@@ -212,9 +212,20 @@ marcos> Nao sei tocar Chico Buarque.
         Posso ajudar com timers, alarmes ou listar/agendar coisas?
 ```
 
-The 20 tests run against a mocked HTTP transport. There is no Spotify account on
-this machine, so the real response shapes and the browser consent flow are still
-unproven -- treat the first real run as a first run.
+**Verified against a real account.** The first real run found three things the
+mocked tests could not: Spotify answers 403 both for "no Premium" and for
+"command not valid right now", so the message no longer blames Premium blindly;
+playing a bare track leaves a one-item queue, so a track now plays in its
+**album context** and "skip" continues the record; and the model claimed to have
+paused without calling the tool -- caused by history that recorded only the
+spoken sentence, fixed in D22.
+
+```
+voce> toca construcao do chico buarque  -> Tocando Construcao, de Chico Buarque.
+voce> que musica e essa                 -> Construcao, de Chico Buarque.
+voce> pula essa                         -> Proxima.
+voce> pausa a musica                    -> Pausado.
+```
 
 Home Assistant is out of scope -- one smart bulb does not justify Tailscale and
 phase 5.

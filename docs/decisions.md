@@ -761,8 +761,78 @@ para isso.
 **Escopos pedidos:** só `user-read-playback-state` e
 `user-modify-playback-state`. Sem playlists, biblioteca, e-mail ou histórico.
 
-**Não verificado ponta a ponta:** não há conta do Spotify aqui. Os vinte testes
-rodam contra um `httpx.MockTransport`, o que cobre a lógica — token que vence,
-403, 204, escolha de aparelho — e **não** cobre o formato real das respostas nem
-o fluxo de consentimento no navegador. A primeira execução com conta de verdade
-ainda pode revelar diferença de campo, e deve ser tratada como estreia.
+**Verificado com conta real em 2026-09-01**, e a estreia revelou três coisas que
+o HTTP falso não tinha como mostrar:
+
+1. O 403 ambíguo, acima.
+2. Tocar a faixa avulsa (`uris` com um item) deixa a fila com uma música só: o
+   primeiro "próxima" acaba com ela em silêncio, e o aparelho ainda dizia
+   "Próxima". Agora toca no **contexto do álbum** (`context_uri` + `offset`),
+   então pedir uma música começa nela e continua no disco.
+3. O modelo dizia ter pausado sem chamar a ferramenta — causa e correção em
+   [D22](#d22--o-histórico-guarda-a-chamada-de-ferramenta-não-só-a-frase-falada).
+
+Confirmado funcionando: autorização, renovação de token, listagem de aparelhos,
+tocar, pular, pausar e "o que está tocando", com `is_playing` conferido direto na
+API a cada passo. Os 27 testes contra `httpx.MockTransport` continuam sendo o que
+cobre os caminhos de erro.
+
+---
+
+## D22 — O histórico guarda a chamada de ferramenta, não só a frase falada
+
+**Data:** 2026-09-01
+**O plano diz:** a seção 3 põe o histórico da conversa no gateway. Não diz o que
+entra nele.
+
+**O que mudou:** toda ferramenta executada grava no histórico o **par**
+`tool_call` + `tool_result`, e não apenas a frase que foi falada. `Message`
+ganhou o campo `tool_calls`, e o provedor do Ollama passa a serializá-lo.
+
+**Por quê:** a [D18](#d18--ferramentas-do-dispositivo-o-llm-pede-o-pi-executa-e-o-resultado-é-a-resposta)
+tornou as ferramentas terminais — o resultado vira fala direto, sem segunda
+rodada de LLM — e, sem perceber, parou de chamar `add_tool_result`. O histórico
+passou a registrar só isto:
+
+```
+user:      toca construcao do chico buarque
+assistant: Tocando Construcao, de Chico Buarque.
+```
+
+Nenhum vestígio de que uma ferramenta existiu. **O modelo relê essa conversa, vê
+que ação virou prosa, e faz prosa no turno seguinte.** Com o Spotify ligado:
+
+```
+voce> pausa a musica
+marcos> Pausando a musica.        <- e a musica continuou tocando
+```
+
+Um assistente que diz ter feito o que não fez é pior que um que recusa.
+
+**Medido**, com o mesmo pedido e três formas de histórico:
+
+| Histórico contém | Chamou a ferramenta |
+|---|---|
+| Só a frase falada (o que existia) | **0 de 3** |
+| Só o papel `tool` com o resultado | 1 de 3 |
+| `tool_calls` + `tool` + a frase | **3 de 3** |
+
+Sem histórico nenhum eram 6 de 6. Ou seja: **não era o modelo sendo fraco, era o
+histórico ensinando o comportamento errado.**
+
+**Uma correção pelo prompt foi tentada antes e não funcionou.** Generalizar a
+regra ("nunca diga que fez algo sem chamar a ferramenta") para além de timers não
+mudou nada: o exemplo dentro da própria conversa pesa mais que a instrução no
+system prompt. A regra ficou de qualquer forma, porque está certa — mas ela não
+era a correção.
+
+**Consequências:**
+- `Message.tool_calls` existe no contrato do `LLMProvider`, então qualquer
+  provedor futuro (nuvem, outro runtime) precisa saber serializá-lo. É o
+  formato padrão de tool use, não uma invenção local.
+- O par entra no histórico **também** nas ferramentas terminais, que é onde o
+  bug morava. A frase falada continua sendo a do dispositivo.
+- O `_trim` pode cortar um `tool_call` deixando o `tool_result` órfão. Não é
+  problema hoje (o corte é por número de turnos e o par é adjacente), mas é a
+  primeira coisa a olhar se o modelo voltar a se comportar mal em conversa
+  longa.

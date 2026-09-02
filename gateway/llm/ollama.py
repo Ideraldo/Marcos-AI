@@ -15,6 +15,19 @@ import httpx
 from gateway.llm.base import Delta, Message, Tool
 
 
+def _wire(message: Message) -> dict[str, Any]:
+    """Uma mensagem do histórico no formato que o Ollama espera.
+
+    A mensagem do assistente que pediu ferramenta carrega `tool_calls` e
+    normalmente tem `content` vazio -- é assim que os modelos foram treinados, e
+    é o que faz o turno seguinte continuar usando ferramentas.
+    """
+    corpo: dict[str, Any] = {"role": message.role, "content": message.content}
+    if message.tool_calls:
+        corpo["tool_calls"] = message.tool_calls
+    return corpo
+
+
 class OllamaProvider:
     def __init__(
         self,
@@ -39,7 +52,7 @@ class OllamaProvider:
     ) -> AsyncIterator[Delta]:
         payload: dict[str, Any] = {
             "model": self._model,
-            "messages": [{"role": m.role, "content": m.content} for m in history],
+            "messages": [_wire(m) for m in history],
             "stream": True,
         }
         if self._think is not None:

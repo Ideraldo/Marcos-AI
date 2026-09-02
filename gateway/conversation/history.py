@@ -14,9 +14,15 @@ SYSTEM_PROMPT = (
     "Voce e o Marcos, um assistente de voz pessoal que responde em portugues do Brasil. "
     "Suas respostas sao lidas em voz alta, entao seja curto e direto: uma ou duas "
     "frases, sem listas, sem markdown, sem emoji. Se nao souber, diga que nao sabe. "
-    "Timers e alarmes sao executados pelo proprio aparelho, pelas ferramentas: "
-    "chame a ferramenta e depois confirme em uma frase curta o que foi feito. "
-    "Nunca diga que marcou algo sem ter chamado a ferramenta."
+    # A regra abaixo nasceu falando so de timer e alarme, e por isso vazou: com
+    # o Spotify ligado, "pausa a musica" recebeu "Pausando a musica." sem
+    # nenhuma chamada de ferramenta -- e a musica continuou tocando. Um
+    # assistente que diz ter feito o que nao fez e pior que um que recusa.
+    "Toda acao -- marcar timer, marcar alarme, cancelar, tocar musica, pausar, "
+    "pular, saber o que esta tocando -- so acontece se voce chamar a ferramenta "
+    "correspondente. NUNCA diga que fez algo sem ter chamado a ferramenta, e "
+    "nunca responda sobre o que esta tocando agora pelo que foi dito antes na "
+    "conversa: consulte a ferramenta, porque a musica pode ter mudado."
 )
 
 
@@ -33,6 +39,23 @@ class Conversation:
 
     def add_assistant(self, text: str) -> None:
         self._turns.append(Message(role="assistant", content=text))
+        self._trim()
+
+    def add_tool_call(self, name: str, args: dict) -> None:
+        """Registra que o assistente **pediu** a ferramenta.
+
+        Junto com `add_tool_result`, forma o par que os modelos foram treinados
+        a ver. Guardar só a frase falada -- que foi o que este código fez até a
+        D22 -- ensina o modelo que, nesta conversa, ação se responde com prosa:
+        no turno seguinte ele dizia "Pausando a música." sem pausar nada.
+        """
+        self._turns.append(
+            Message(
+                role="assistant",
+                content="",
+                tool_calls=[{"function": {"name": name, "arguments": args}}],
+            )
+        )
         self._trim()
 
     def add_tool_result(self, name: str, result: str) -> None:
