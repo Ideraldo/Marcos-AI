@@ -8,6 +8,7 @@ up portability.
 - `docs/diario-de-bordo.md` — the narrative: doubts, attempts, what broke
 - `lab/RESULTS.md` — measured numbers for every STT and TTS candidate
 - `lab/docs/comandos.md` — every bench command and flag, in one place
+- `docs/repository-structure.md` — what each folder is for, and why
 
 ## Layout
 
@@ -25,8 +26,11 @@ device/      runs on the PC now, on a Pi 5 later
 gateway/     runs with uvicorn today, in Docker on a VPS later
   api/           WebSocket, token auth, the turn loop
   llm/           interface + swappable implementations
-  tools/         spotify, home_assistant, web_search
+  tools/         device_tools.py  declared here, executed on the device (D18)
+                 spotify.py       executed here: this is where secrets live (D21)
+                 search.py        web search, swappable provider (D24)
   conversation/  history and context assembly
+  data/          the Spotify refresh token -- gitignored
   Dockerfile     gateway-only image; see requirements-gateway.txt (D15)
 common/      shared message schemas -- the contract, never logic
 lab/         bench for picking the STT and TTS engines (not production)
@@ -43,7 +47,12 @@ commit**, and **alarms/timers always execute on the device**.
 Copy-Item .env.example .env
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+ollama pull qwen3:8b                    # the LLM the .env points at (D20)
 ```
+
+`.env.example` documents every variable. The ones without a safe default are
+`DEVICE_TOKEN` and, if you want music, the two Spotify credentials -- everything
+else works as shipped, web search included.
 
 Every command below assumes the project root as the working directory.
 
@@ -144,10 +153,11 @@ Still missing from this phase, on purpose: embedding similarity for paraphrases
 (waiting on a real level-2 log to say which paraphrases people actually use),
 and volume control (OS mixer, platform-specific).
 
-## Phase 3 -- tools (in progress)
+## Phase 3 -- tools
 
 Goal: tools on the gateway. Accepted when the LLM calls the right ones and does
-not invent calls that do not exist.
+not invent calls that do not exist. **Delivered**, minus Home Assistant, which
+is out of scope.
 
 **Done: the tools that run back on the device.** The gateway declares
 `criar_timer`, `criar_alarme`, `listar_agendamentos` and `cancelar_agendamento`,
@@ -182,10 +192,10 @@ because qwen3 reasons by default, which costs latency and can leak: qwen3:4b
 returned its draft as content, and on a voice assistant that means the device
 **says** "Okay, the user is asking..." out loud. Run `ollama pull qwen3:8b`.
 
-Still open: grounding. An 8B hallucinates -- it once attributed Dom Casmurro to
-the wrong author. That is what web search is for, and it is next.
+An 8B still hallucinates -- it once attributed Dom Casmurro to the wrong author.
+That is what the web search below is for.
 
-**Spotify: written, not verified.** Six music tools, and the first ones the
+**Spotify.** Six music tools, and the first ones the
 gateway executes itself rather than forwarding -- the client secret and refresh
 token live on the server and never travel the wire (D21). Setup is one-time:
 
@@ -260,11 +270,8 @@ It does not search what it already knows -- 2.1s for those, 7-12s for a searched
 turn. Grounding costs time; that is the trade, not a defect.
 
 Home Assistant is out of scope -- one smart bulb does not justify Tailscale and
-phase 5.
-
-```powershell
-ollama pull qwen3:8b     # once; the .env points at it
-```
+phase 5: a single smart bulb does not pay for a Home Assistant instance and a
+Tailscale link to reach it.
 
 ## Choosing STT and TTS
 
@@ -294,11 +301,11 @@ in `docs/voz-e-locutor.md`:
 **Phase 1's container is written but never executed** (D15), and its first real
 run will be on the VPS (D16). Nothing else waits on it.
 
-**Phase 4 -- the face**: a local web app with the four animated states. Or the
-translator mode. Neither depends on hardware.
+**Phase 4 -- the face**: a local web app with the four animated states. Does not
+depend on hardware.
 
-**Then: portable translator mode.** Speak Portuguese, have the device speak
-English or Chinese, and the reverse. Two of the three pieces already exist --
+**Portable translator mode**, the other candidate for next. Speak Portuguese,
+have the device speak English or Chinese, and the reverse. Two of the three pieces already exist --
 Whisper is multilingual by nature, Piper has a voice per language -- so what is
 missing is machine translation in the middle. The candidate is **opus-mt on
 CTranslate2**, the same runtime `faster_whisper` already uses. NLLB-200 600M is
