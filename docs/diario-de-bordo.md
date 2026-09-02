@@ -1468,6 +1468,37 @@ E isso muda a prioridade do que vem: a **busca web** deixou de ser "o requisito
 central do projeto" no abstrato e passou a ser a resposta a um defeito que eu vi
 acontecer. Um 8B sabe conversar; fundamentar é outra coisa.
 
+### "E se ligar o raciocínio? Não resolveria a alucinação?"
+
+Perguntei isso, e a resposta honesta era que eu não tinha medido — tinha
+desligado por latência e pelo vazamento do 4b. Fui medir: dezesseis perguntas
+factuais, metade obscuras de propósito, duas repetições.
+
+| | `think=false` | `think=true` |
+|---|---|---|
+| Acertos | 11/16 | 12/16 |
+| **Erros com confiança** | **1** | **0** |
+| "Não sei" | 4 | 5 |
+| Mediana | **1,6 s** | **17,1 s** |
+
+**Ajuda, e não do jeito que eu esperava.** Ele não passou a saber mais coisas —
+passou a admitir que não sabe. O *"Grande Sertão: Veredas foi escrito por José de
+Alencar"* virou *"não sei quem escreveu"*. E recuperou um fato de verdade: quem
+foi o segundo presidente do Brasil era "não sei" sem raciocínio, e virou "Floriano
+Peixoto" com.
+
+Só que custa **dez vezes mais tempo**, e o orçamento do plano para o nível 2 é 1,5
+segundo. Dezessete segundos parado para ouvir "não sei" é pior que a alucinação,
+porque acontece em toda pergunta em vez de uma em seis.
+
+Fica desligado — mas agora por um motivo melhor do que "é lento". O modelo não
+errou por falta de raciocínio: errou por não ter o fato. Pensar mais sobre um
+fato ausente produz uma justificativa melhor para a mesma resposta errada.
+O que ataca a causa é fundamentar.
+
+De brinde, o teste também absolveu o 8b: **o vazamento do rascunho era defeito só
+do 4b**. O 8b não vazou em nenhum dos dois modos.
+
 *Lição para o vídeo: dois erros do dia foram o mesmo erro — testar o que eu achava
 que estava rodando, em vez do que estava. Um gateway velho segurando a porta, e
 um .env que eu tinha esquecido que existia.*

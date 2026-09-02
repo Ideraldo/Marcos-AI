@@ -636,10 +636,36 @@ bancada de doze frases nos candidatos:
 O llama chegou a chamar `listar_agendamentos` para *"cancela o alarme que eu
 marquei"*. O qwen3:8b acertou as cinco.
 
-**Por que o raciocínio fica desligado:** o qwen3 pensa por padrão, e para voz
-isso é ruim duas vezes. Custa latência — o 4b saiu de 5,5 s para 10,3 s de
-mediana com ele ligado — e, pior, **vaza**. O qwen3:4b devolveu o rascunho como
-conteúdo:
+**Por que o raciocínio fica desligado.** A pergunta óbvia é se ele não resolveria
+a alucinação. Medido no 8b, dezesseis perguntas factuais, metade fáceis e metade
+obscuras, duas repetições cada:
+
+| | `think=false` | `think=true` |
+|---|---|---|
+| Acertos | 11/16 | 12/16 |
+| **Erros com confiança** | **1** | **0** |
+| "Não sei" | 4 | 5 |
+| Mediana | **1,6 s** | **17,1 s** |
+
+Ele **ajuda**, e de um jeito específico: não passou a saber mais, passou a
+admitir que não sabe. *"Grande Sertão: Veredas foi escrito por José de Alencar"*
+virou *"não sei quem escreveu"*. Recuperou um fato real (o segundo presidente do
+Brasil, que sem raciocínio era "não sei" nas duas tentativas).
+
+**Mas custa dez vezes mais tempo, e a seção 11 orça 1,5 s para o nível 2.**
+Dezessete segundos de espera para ouvir "não sei" é pior que a alucinação, porque
+acontece em *toda* pergunta e não em uma a cada seis.
+
+O argumento decisivo não é a latência, é a causa: o modelo não errou por falta de
+raciocínio, errou por não ter o fato. Pensar mais sobre um fato ausente produz
+uma justificativa melhor para a mesma resposta errada. O que ataca a causa é
+fundamentar — buscar, ler, responder com fonte —, e é por isso que a busca web
+importa mais do que parecia quando a ordem das ferramentas foi escolhida.
+
+Fica em `LLM_THINK` para não ser uma escolha trancada no código.
+
+**Vazamento é problema só do 4b.** O 8b respeita `think: false` e não devolveu
+rascunho em nenhum dos dois modos. O qwen3:4b devolveu o rascunho como conteúdo:
 
 ```
 marcos> Okay, the user is asking for the capital of Australia...
@@ -650,8 +676,9 @@ voz alta, com a minha voz. O 4b foi descartado por esse motivo, não pela nota.
 
 **Consequências:**
 - `OllamaProvider` ganhou o parâmetro `think`, e `LLM_THINK` no `.env`. Fica
-  configurável porque um modelo sem raciocínio ignora o campo, e um dia pode
-  valer ligar para uma pergunta difícil.
+  configurável porque um modelo sem raciocínio ignora o campo, e porque a
+  medição acima mostra que ligar é uma troca real (menos mentira, muito mais
+  espera) e não um erro.
 - Turnos de conhecimento geral ficaram em ~1,2 s ponta a ponta, dentro do
   orçamento de 1,5 s da seção 11. Os de ferramenta ficam em ~2,4 s.
 - A pergunta em aberto da D11 — *"se um modelo aberto de 8B dá conta"* — vira:
