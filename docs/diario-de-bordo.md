@@ -1388,6 +1388,92 @@ o que quebrou foi a capital da Austrália.*
 
 ---
 
+## Dia 6 (continuação) — Trocar o modelo, e o rascunho que quase virou fala
+
+O achado do bloco anterior deixou uma decisão na mesa, e eu escolhi a mais barata
+das três: testar outro modelo local antes de aceitar depender de chave de API.
+
+Puxei `qwen3:4b` e `qwen3:8b` e rodei a mesma bancada de frases. Placa aqui é uma
+RTX 2060 de 6 GB — o llama3.1:8b já ocupava 4,9 dela, então o 8b do qwen (5,2 GB)
+entra apertado e o 4b entra folgado.
+
+| | llama3.1:8b | qwen3:4b | qwen3:8b |
+|---|---|---|---|
+| Ferramenta certa | 4/5 | 5/5 | **5/5** |
+| Conhecimento geral | 0/7 | 3/7 | **6/7** |
+| Mediana por turno | **1,7 s** | 5,5 s | 2,8 s |
+
+O llama chamou `listar_agendamentos` quando eu disse *"cancela o alarme que eu
+marquei"*. O qwen3:8b acertou as cinco, e voltou a saber a capital da Austrália.
+
+### O 4b foi descartado por um motivo que não é a nota
+
+Na primeira rodada o qwen3:4b apareceu com mediana de 10,3 s. É o modo de
+raciocínio, ligado por padrão no qwen3. Desliguei com `think: false`, o tempo
+caiu pela metade — e apareceu isto:
+
+```
+marcos> Okay, the user is asking for the capital of Australia...
+```
+
+O rascunho do raciocínio voltou como **conteúdo**, não como campo separado. Num
+chat isso é um log feio. Aqui é o aparelho falando isso em voz alta, **com a
+minha voz**, no meio do quarto. O 4b saiu por isso, não por acertar menos.
+
+O 8b respeita o `think: false` e não vaza. Virou [D20](decisions.md), com o
+parâmetro exposto em `LLM_THINK` — um dia pode valer ligar para uma pergunta
+difícil, e aí é uma variável de ambiente, não uma reescrita.
+
+### Meia hora perdida por uma coisa idiota
+
+Troquei o padrão no `gateway/config.py`, subi tudo, e o `/health` respondeu:
+
+```json
+{"status":"ok","llm":"ollama:llama3.1:8b"}
+```
+
+O `.env` local — que não vai para o git, e por isso eu tinha esquecido que
+existia — sobrepõe o padrão do código. Eu tinha trocado o padrão e não a
+configuração real. **Todo teste que eu fizesse ali estaria medindo o modelo
+antigo achando que era o novo**, que é exatamente o erro que eu já tinha cometido
+uma hora antes com o gateway velho segurando a porta 8000. Duas vezes no mesmo
+dia, o mesmo tipo de engano: acreditar que o processo em execução é o código que
+eu acabei de escrever.
+
+### A alucinação, e o que eu quase escrevi errado
+
+Com tudo no lugar, o turno completo:
+
+```
+voce> qual a capital da australia
+marcos> Canberra.                                        (1,2 s)
+
+voce> quem escreveu dom casmurro
+marcos> Mario Quintana.
+```
+
+Machado de Assis. Ele errou com confiança total, que é o pior jeito de errar.
+
+Minha primeira hipótese foi o histórico da conversa: as respostas anteriores eram
+todas curtíssimas ("Timer de 1 hora e meia."), e talvez o modelo estivesse
+imitando o padrão e chutando. Fui medir antes de escrever isso aqui como se fosse
+verdade — e **não se reproduziu**. Sessão limpa: 3/3 certas. Com o mesmo
+histórico de antes: 2/2 certas. Foi alucinação avulsa, uma em seis, não efeito de
+contexto.
+
+Quase registrei uma explicação bonita e errada no diário. A diferença entre as
+duas coisas foram três minutos rodando o teste.
+
+E isso muda a prioridade do que vem: a **busca web** deixou de ser "o requisito
+central do projeto" no abstrato e passou a ser a resposta a um defeito que eu vi
+acontecer. Um 8B sabe conversar; fundamentar é outra coisa.
+
+*Lição para o vídeo: dois erros do dia foram o mesmo erro — testar o que eu achava
+que estava rodando, em vez do que estava. Um gateway velho segurando a porta, e
+um .env que eu tinha esquecido que existia.*
+
+---
+
 ## Onde estamos agora
 
 **O Marcos me ouve, pensa, responde com a minha voz — e agora também resolve
@@ -1410,7 +1496,7 @@ Fechado até aqui:
 | Nome | Marcos (D8) | o repositório já se chamava assim |
 | Arquitetura | Dois processos, WebSocket | migrar = trocar URL |
 | Rede | só texto, nos dois sentidos (D7, D13) | alguns KB por interação, e fala offline |
-| LLM | open source via Ollama (D11) | preferência; `LLMProvider` é o ponto de troca |
+| LLM | qwen3:8b via Ollama, sem raciocínio (D11, D20) | o llama3.1 não tem ferramentas e conhecimento juntos |
 | STT | faster-whisper no dispositivo, tamanho a decidir na Pi (D9, D13) | nível 0 offline não existe sem isso |
 | TTS | Piper, voz própria treinada (D4) | RTF 0,05, offline, timbre próprio |
 | Locutor | ECAPA-TDNN | cadastro, não treino |
@@ -1446,12 +1532,15 @@ que espera o log real de nível 2 dizer quais paráfrases as pessoas usam; e o
 alarme, listar, cancelar — funcionam ponta a ponta: o LLM entende a paráfrase que
 o regex não pega, e quem grava e dispara continua sendo o Pi (D18).
 
-**Mas o critério de aceite da Fase 3 está cumprido pela metade, e a metade que
-falta é do modelo.** Com ferramentas declaradas, o llama3.1:8b para de responder
-conhecimento geral: 4 de 5 ferramentas certas, 0 chamadas inventadas, e 0 de 5
-perguntas gerais respondidas (D19). Três alternativas foram medidas e todas são
-piores. **Isto é uma decisão em aberto e ela é sua** — modelo maior, modelo
-melhor em ferramentas, ou o modelo de nuvem que a seção 6 sempre apontou.
+**E o critério de aceite passou a ser cumprido trocando o modelo.** Com
+ferramentas declaradas o llama3.1:8b parava de responder conhecimento geral (0 de
+7). O **qwen3:8b com o raciocínio desligado** acerta 5/5 nas ferramentas e 6/7 no
+conhecimento, com mediana de 2,8 s (D19, D20). O qwen3:4b foi descartado por
+vazar o rascunho do raciocínio como fala.
+
+O que sobra em aberto é **fundamentação**: o 8B alucina de vez em quando — disse
+que Dom Casmurro é do Mario Quintana, uma vez em seis. É o argumento a favor da
+busca web.
 
 Ordem escolhida para o resto da Fase 3: **Spotify**, depois **busca web**.
 Home Assistant fica fora: uma lâmpada Elgin não paga o Tailscale e a Fase 5.
@@ -1475,8 +1564,8 @@ Em aberto:
   código real. É a maior incerteza do projeto hoje.
 - Qual tamanho de STT cabe na Pi, quando houver Pi para medir (D9)
 - Backup privado do dataset, que hoje existe só num disco
-- **Qual modelo** — o 8B não tem ferramentas e conhecimento ao mesmo tempo (D19).
-  É a pergunta em aberto mais urgente do projeto agora
+- **Se um 8B basta para busca fundamentada** — para ferramentas e conversa curta
+  já se sabe que basta (D20); ele alucina, e a busca web é o teste real disso
 - Se um bloco 4 de gravações vale a pena (o `prepare --from-run` já deixa barato)
 - Se o gateway deve re-transcrever com um modelo maior — a pergunta de D1 que
   D13 deixou sem caminho, porque o áudio não sobe mais

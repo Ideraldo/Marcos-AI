@@ -27,6 +27,7 @@ def build_llm() -> LLMProvider:
             base_url=config.ollama_url,
             model=config.llm_model,
             timeout=config.llm_timeout,
+            think=config.llm_think,
         )
     raise ValueError(f"unknown LLM_PROVIDER {config.llm_provider!r}")
 

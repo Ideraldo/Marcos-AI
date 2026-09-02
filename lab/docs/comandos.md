@@ -373,7 +373,8 @@ Variáveis relevantes em `.env`:
 | `DEVICE_TOKEN` | tem que bater dos dois lados |
 | `TTS_VOICE` / `TTS_VOICE_DIR` | qual voz o dispositivo carrega, e de onde |
 | `SIMULATED_LATENCY_MS` | 80 = Wi-Fi, 150 = 4G |
-| `LLM_PROVIDER` / `LLM_MODEL` | `ollama` / `llama3.1:8b` |
+| `LLM_PROVIDER` / `LLM_MODEL` | `ollama` / `qwen3:8b` (D20; `ollama pull qwen3:8b`) |
+| `LLM_THINK` | `false`: o qwen3 raciocina por padrao, e o rascunho vira fala |
 | `LLM_TIMEOUT` | suba se o modelo local estiver sem GPU livre |
 | `AUDIO_INPUT_DEVICE` / `AUDIO_OUTPUT_DEVICE` | áudio do dispositivo |
 | `STT_MODEL` / `STT_COMPUTE_TYPE` / `STT_MODEL_DIR` | qual Whisper o dispositivo carrega |

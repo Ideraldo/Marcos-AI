@@ -167,16 +167,30 @@ second LLM round. That started as a latency win (3.7s -> 2.1s) and turned out to
 be a correctness fix -- asked to list two schedules, the model rewrote the list
 and dropped one.
 
-**Open, and it is a model problem, not a code one.** With tools declared,
-llama3.1:8b stops answering general knowledge -- same prompt, same question,
-"Não sei" with tools and "Canberra" without. Measured over ten sentences: 4/5
-correct tool calls, 0 invented calls, and 0/5 general questions answered. Three
-alternatives were measured and all were worse (D19). The fix is a different
-model behind the same `LLMProvider` interface, which is exactly what plan
-section 6 always said.
+**The model had to change for this to work.** With tools declared, llama3.1:8b
+stops answering general knowledge -- same prompt, same question, "Não sei" with
+tools and "Canberra" without (D19). Measured across three candidates:
+
+| | llama3.1:8b | qwen3:4b | qwen3:8b |
+|---|---|---|---|
+| Right tool | 4/5 | 5/5 | **5/5** |
+| General knowledge | 0/7 | 3/7 | **6/7** |
+| Median turn | **1.7s** | 5.5s | 2.8s |
+
+`qwen3:8b` is the default now, with `LLM_THINK=false` (D20). Thinking is off
+because qwen3 reasons by default, which costs latency and can leak: qwen3:4b
+returned its draft as content, and on a voice assistant that means the device
+**says** "Okay, the user is asking..." out loud. Run `ollama pull qwen3:8b`.
+
+Still open: grounding. An 8B hallucinates -- it once attributed Dom Casmurro to
+the wrong author. That is what web search is for, and it is next.
 
 Next in this phase: Spotify, then web search. Home Assistant is out of scope --
 one smart bulb does not justify Tailscale and phase 5.
+
+```powershell
+ollama pull qwen3:8b     # once; the .env points at it
+```
 
 ## Choosing STT and TTS
 
@@ -206,8 +220,8 @@ in `docs/voz-e-locutor.md`:
 **Phase 1's container is written but never executed** (D15), and its first real
 run will be on the VPS (D16). Nothing else waits on it.
 
-**Deciding which model runs the level-2 path.** The 8B cannot hold tools and
-general knowledge at once (D19); everything else in phase 3 sits behind that.
+**Spotify, then web search** -- the rest of phase 3. Web search matters more
+than it looks: it is the answer to an 8B model that hallucinates (D20).
 
 **Then: portable translator mode.** Speak Portuguese, have the device speak
 English or Chinese, and the reverse. Two of the three pieces already exist --

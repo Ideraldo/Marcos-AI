@@ -16,10 +16,21 @@ from gateway.llm.base import Delta, Message, Tool
 
 
 class OllamaProvider:
-    def __init__(self, base_url: str, model: str, timeout: float = 120.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        timeout: float = 120.0,
+        think: bool | None = None,
+    ) -> None:
         self._url = base_url.rstrip("/") + "/api/chat"
         self._model = model
         self._timeout = timeout
+        # Modelos de raciocínio (o qwen3 é um) pensam por padrão. Para voz isso
+        # é ruim duas vezes: multiplica a latência do turno, e o raciocínio pode
+        # vazar como texto -- que aqui vira o aparelho **falando** "Okay, the
+        # user is asking...". Medido: qwen3:4b vaza; o 8b com `think=False` não.
+        self._think = think
 
     async def respond(
         self,
@@ -31,6 +42,8 @@ class OllamaProvider:
             "messages": [{"role": m.role, "content": m.content} for m in history],
             "stream": True,
         }
+        if self._think is not None:
+            payload["think"] = self._think
         if tools:
             payload["tools"] = [
                 {
@@ -62,6 +75,8 @@ class OllamaProvider:
                             args = json.loads(args)
                         yield Delta(tool_name=function.get("name"), tool_args=args)
 
+                    # `thinking` vem em campo separado quando o modelo pensa.
+                    # Nunca vira fala: é rascunho, não resposta.
                     text = message.get("content")
                     if text:
                         yield Delta(text=text)

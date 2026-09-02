@@ -611,3 +611,57 @@ um caminho que ninguém esperava: **ele não dá conta de ter ferramentas e
 conhecimento ao mesmo tempo.** As saídas são um modelo maior, um modelo melhor em
 ferramentas, ou o modelo de nuvem que a seção 6 sempre apontou — todas atrás da
 mesma interface `LLMProvider`, que é o ponto de troca e continua intacto.
+
+---
+
+## D20 — O modelo passa a ser o qwen3:8b, com o raciocínio desligado
+
+**Data:** 2026-09-01
+**O plano diz:** a seção 6 escolhe modelo aberto local e prevê trocar por um de
+nuvem atrás da mesma interface. A [D11](#d11) escolheu o llama3.1:8b via Ollama.
+
+**O que mudou:** `LLM_MODEL` passa a ser `qwen3:8b`, e o provedor manda
+`think: false` na chamada.
+
+**Por quê:** a [D19](#d19--o-llama-318b-nao-faz-as-duas-coisas) mediu que o
+llama3.1:8b não tem ferramentas e conhecimento ao mesmo tempo. Repetindo a mesma
+bancada de doze frases nos candidatos:
+
+| | llama3.1:8b | qwen3:4b | qwen3:8b |
+|---|---|---|---|
+| Ferramenta certa | 4/5 | 5/5 | **5/5** |
+| Conhecimento geral | 0/7 | 3/7 | **6/7** |
+| Mediana por turno | **1,7 s** | 5,5 s | 2,8 s |
+
+O llama chegou a chamar `listar_agendamentos` para *"cancela o alarme que eu
+marquei"*. O qwen3:8b acertou as cinco.
+
+**Por que o raciocínio fica desligado:** o qwen3 pensa por padrão, e para voz
+isso é ruim duas vezes. Custa latência — o 4b saiu de 5,5 s para 10,3 s de
+mediana com ele ligado — e, pior, **vaza**. O qwen3:4b devolveu o rascunho como
+conteúdo:
+
+```
+marcos> Okay, the user is asking for the capital of Australia...
+```
+
+Num assistente de voz isso não é um log feio: é o aparelho **falando** isso em
+voz alta, com a minha voz. O 4b foi descartado por esse motivo, não pela nota.
+
+**Consequências:**
+- `OllamaProvider` ganhou o parâmetro `think`, e `LLM_THINK` no `.env`. Fica
+  configurável porque um modelo sem raciocínio ignora o campo, e um dia pode
+  valer ligar para uma pergunta difícil.
+- Turnos de conhecimento geral ficaram em ~1,2 s ponta a ponta, dentro do
+  orçamento de 1,5 s da seção 11. Os de ferramenta ficam em ~2,4 s.
+- A pergunta em aberto da D11 — *"se um modelo aberto de 8B dá conta"* — vira:
+  **dá, para ferramentas e conversa curta.** Para busca fundamentada continua em
+  aberto, e agora por um motivo concreto: ele alucina. Perguntado quem escreveu
+  Dom Casmurro, respondeu *"Mario Quintana"* uma vez em seis. Achei que fosse
+  efeito do histórico da conversa e fui medir: não se reproduziu, 5/5 corretas
+  depois. É alucinação avulsa de modelo pequeno, e é o argumento mais forte a
+  favor da busca web ser a próxima ferramenta.
+
+**Nota de operação:** o modelo tem 5,2 GB e a placa aqui tem 6 GB. Cabe, mas sem
+folga. Quem rodar isto com o fine-tune do Piper ao mesmo tempo vai repetir o
+`CUDA out of memory` que já está registrado no `comandos.md`.
